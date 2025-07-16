@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-# custom_canny_face.py  (2025-07-16 rev-B)
+# custom_canny_face.py  (2025-07-16 rev-D)
+
 """
 예시
-CUDA_VISIBLE_DEVICES=1,2 python custom_canny_face.py --ctrl edge                # 논리 GPU 0
+CUDA_VISIBLE_DEVICES=1,2 python custom_canny_face.py --ctrl edge
 CUDA_VISIBLE_DEVICES=1,2 python custom_canny_face.py --ctrl both --style --gpu 1
 """
 import argparse, cv2, torch, numpy as np
@@ -20,7 +21,7 @@ FACE_IMG  = Path("/data2/jiyoon/custom/data/face/00000.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p2.jpeg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s3.png")
 
-CN_EDGE  = "diffusers/controlnet-canny-sdxl-1.0"       
+CN_EDGE  = "diffusers/controlnet-canny-sdxl-1.0"
 CN_DEPTH = "diffusers/controlnet-depth-sdxl-1.0-small"
 BASE_SDXL= "stabilityai/stable-diffusion-xl-base-1.0"
 
@@ -31,7 +32,7 @@ COND_EDGE, COND_DEPTH = 0.8, 0.6
 STYLE_SCALE, CFG      = 0.8, 7.0
 STEPS, SEED           = 50, 42
 
-OUTDIR = Path("/data2/jiyoon/custom/results/mode/8/posemask_s3")
+OUTDIR = Path("/data2/jiyoon/custom/results/mode/8/cannydev")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────── 유틸 ───────────────────
@@ -49,7 +50,7 @@ def depth_to_rgb(arr):
     if torch.is_tensor(arr):
         arr = arr.squeeze().cpu().numpy()
     arr = (arr - arr.min()) / (arr.max() - arr.min() + 1e-8)
-    g   = (arr * 255).astype("uint8")
+    g   = (arr*255).astype("uint8")
     return Image.fromarray(np.repeat(g[..., None], 3, -1))
 
 # ─────────────────── 메인 ───────────────────
@@ -58,7 +59,7 @@ def main(ctrl, use_style, gpu_idx):
     DTYPE  = torch.float16
     torch.manual_seed(SEED)
 
-    # ── detector & depth
+    # detector & depth
     face_det = FaceAnalysis(
         name="antelopev2",
         root="/data2/jiyoon/InstantID",
@@ -67,42 +68,51 @@ def main(ctrl, use_style, gpu_idx):
     face_det.prepare(ctx_id=gpu_idx, det_size=(640, 640))
     midas = MidasDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
 
-    # ── 0. 이미지 로딩
+    # 0. 이미지 로딩
     face_im   = to_sdxl_res(load_rgb(FACE_IMG))
     pose_im   = to_sdxl_res(load_rgb(POSE_IMG))
     style_pil = load_rgb(STYLE_IMG)
 
-    # ── 1-A. pose 이미지에서 얼굴 bbox mask 추출 ── [★ changed]
-    pose_cv   = cv2.cvtColor(np.array(pose_im), cv2.COLOR_RGB2BGR)
-    info      = max(face_det.get(pose_cv), key=lambda d: (d['bbox'][2] - d['bbox'][0]) * (d['bbox'][3] - d['bbox'][1]))
-    x1, y1, x2, y2 = map(int, info['bbox'])
     w_pose, h_pose = pose_im.size
+
+    # 1-A. pose 얼굴 bbox & mask
+    pose_cv = cv2.cvtColor(np.array(pose_im), cv2.COLOR_RGB2BGR)
+    p_info  = max(face_det.get(pose_cv), key=lambda d:(d['bbox'][2]-d['bbox'][0])*(d['bbox'][3]-d['bbox'][1]))
+    x1, y1, x2, y2 = map(int, p_info['bbox'])
     x1, y1 = max(0, x1), max(0, y1)
     x2, y2 = min(w_pose, x2), min(h_pose, y2)
 
-    mask = np.zeros((h_pose, w_pose, 3), dtype=np.uint8)
-    mask[y1:y2, x1:x2] = 255
-    mask_pil = Image.fromarray(mask)
+    mask_canvas = np.zeros((h_pose, w_pose, 3), dtype=np.uint8)
+    mask_canvas[y1:y2, x1:x2] = 255
+    mask_pil = Image.fromarray(mask_canvas)
 
-    # ── 1-B. face 이미지에서 Canny edge 추출 & pose 얼굴 영역에만 삽입 ── [★ changed]
-    face_cv   = cv2.cvtColor(np.array(face_im), cv2.COLOR_RGB2BGR)
-    edges     = cv2.Canny(face_cv, 100, 450)
-    edges_rgb = cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
+    # 1-B. face bbox → edge 추출 (GaussianBlur → Canny → dilate)
+    face_cv = cv2.cvtColor(np.array(face_im), cv2.COLOR_RGB2BGR)
+    f_info  = max(face_det.get(face_cv), key=lambda d:(d['bbox'][2]-d['bbox'][0])*(d['bbox'][3]-d['bbox'][1]))
+    fx1, fy1, fx2, fy2 = map(int, f_info['bbox'])
 
-    # bbox 크기에 맞춰 리사이즈
-    edges_resized = cv2.resize(edges_rgb, (x2 - x1, y2 - y1), interpolation=cv2.INTER_LINEAR)
+    # ── edge 추출 부분 교체 ───────────────────────────
+    face_crop = face_cv[fy1:fy2, fx1:fx2]
+    face_crop = cv2.GaussianBlur(face_crop, (5, 5), 0)
+    edge      = cv2.Canny(face_crop, 80, 160)
+    edge      = cv2.dilate(edge, np.ones((3, 3), np.uint8), 1)
+    f_edges   = cv2.cvtColor(edge, cv2.COLOR_GRAY2RGB)
 
-    # 빈 캔버스(검정) 생성 → 얼굴 영역에 edge 삽입
-    edge_canvas           = np.zeros((h_pose, w_pose, 3), dtype=np.uint8)
-    edge_canvas[y1:y2, x1:x2] = edges_resized
+    # pose 얼굴 bbox 사이즈로 리사이즈
+    pw, ph = x2 - x1, y2 - y1
+    edge_resized = cv2.resize(f_edges, (pw, ph), interpolation=cv2.INTER_LINEAR)
+
+    edge_canvas = np.zeros_like(mask_canvas)
+    edge_canvas[y1:y2, x1:x2] = edge_resized
     edge_pil = Image.fromarray(edge_canvas)
-    edge_pil.save(OUTDIR / "edge.png")
+    edge_pil.save(OUTDIR/"edge.png")
+    mask_pil.save(OUTDIR/"mask.png")
 
-    # ── 2. pose 이미지에서 depth 추출 (변경 없음)
+    # 2. pose depth
     depth_pil = depth_to_rgb(midas(pose_im)).resize(pose_im.size, Image.BILINEAR)
-    depth_pil.save(OUTDIR / "depth.png")
+    depth_pil.save(OUTDIR/"depth.png")
 
-    # ── 3. ControlNet 설정
+    # 3. ControlNet 설정
     controlnets, images, scales, masks = [], [], [], []
     if ctrl in ("edge", "both"):
         controlnets.append(ControlNetModel.from_pretrained(CN_EDGE, torch_dtype=DTYPE))
@@ -126,7 +136,7 @@ def main(ctrl, use_style, gpu_idx):
     else:
         pipe.to(DEVICE)
 
-    # ── 4. 생성
+    # 4. 생성
     gen_args = dict(
         prompt=PROMPT,
         negative_prompt=NEG,
@@ -147,7 +157,7 @@ def main(ctrl, use_style, gpu_idx):
     else:
         out = pipe(**gen_args).images[0]
 
-    fname = OUTDIR / "8_thresh_100_450.png"
+    fname = OUTDIR/"0_thresh_80_160.png"
     out.save(fname); print("✅ saved →", fname)
 
 # ─────────────────── CLI ───────────────────
