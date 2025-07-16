@@ -157,7 +157,7 @@ def main(ctrl, use_style, gpu_idx):
     else:
         out = pipe(**gen_args).images[0]
 
-    fname = OUTDIR/"0_thresh_80_160.png"
+    fname = OUTDIR/"6_face2_thresh_80_160.png"
     out.save(fname); print("✅ saved →", fname)
 
 # ─────────────────── CLI ───────────────────
