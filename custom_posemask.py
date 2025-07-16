@@ -27,9 +27,9 @@ BASE_SDXL= "stabilityai/stable-diffusion-xl-base-1.0"
 STYLE_ENC = "/data2/jiyoon/IP-Adapter/sdxl_models/image_encoder"
 STYLE_IP  = "/data2/jiyoon/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin"
 
-COND_EDGE, COND_DEPTH = 0.61, 0.7
-STYLE_SCALE, CFG      = 1.0, 7.0
-STEPS, SEED           = 30, 42
+COND_EDGE, COND_DEPTH = 0.8, 0.6
+STYLE_SCALE, CFG      = 0.8, 7.0
+STEPS, SEED           = 50, 42
 
 OUTDIR = Path("/data2/jiyoon/custom/results/mode/8/posemask")
 OUTDIR.mkdir(parents=True, exist_ok=True)
@@ -86,7 +86,7 @@ def main(ctrl, use_style, gpu_idx):
 
     # ── 1-B. face 이미지에서 Canny edge 추출 & pose 얼굴 영역에만 삽입 ── [★ changed]
     face_cv   = cv2.cvtColor(np.array(face_im), cv2.COLOR_RGB2BGR)
-    edges     = cv2.Canny(face_cv, 10, 50)
+    edges     = cv2.Canny(face_cv, 100, 300)
     edges_rgb = cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
 
     # bbox 크기에 맞춰 리사이즈
@@ -147,7 +147,7 @@ def main(ctrl, use_style, gpu_idx):
     else:
         out = pipe(**gen_args).images[0]
 
-    fname = OUTDIR / "1_resize.png"
+    fname = OUTDIR / "5_thresh_100_300.png"
     out.save(fname); print("✅ saved →", fname)
 
 # ─────────────────── CLI ───────────────────
