@@ -17,7 +17,7 @@ from insightface.app import FaceAnalysis
 from ip_adapter import IPAdapterXL
 
 # ─────────────────── 기본 설정 ───────────────────
-PROMPT, NEG = "a baby", "(lowres, bad quality, watermark)"
+PROMPT, NEG = "a baby with clear facial features", "(lowres, bad quality, watermark)"
 FACE_IMG  = Path("/data2/jiyoon/custom/data/face/00000.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p2.jpeg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s3.png")
@@ -29,8 +29,8 @@ BASE_SDXL= "stabilityai/stable-diffusion-xl-base-1.0"
 STYLE_ENC = "/data2/jiyoon/IP-Adapter/sdxl_models/image_encoder"
 STYLE_IP  = "/data2/jiyoon/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin"
 
-COND_EDGE, COND_DEPTH = 0.63, 0.7
-STYLE_SCALE, CFG      = 1.0, 6.0
+COND_EDGE, COND_DEPTH = 0.61, 0.7
+STYLE_SCALE, CFG      = 1.0, 7.0
 STEPS, SEED           = 30, 42
 
 OUTDIR = Path("/data2/jiyoon/custom/results/mode/8/canny")
@@ -114,10 +114,13 @@ def main(ctrl, use_style, gpu_idx):
         pipe.to(DEVICE)
     # ------------------------------------------------------------------
 
-    gen = dict(prompt=PROMPT, negative_prompt=NEG,
-               num_inference_steps=STEPS, guidance_scale=CFG,
-               image=images, controlnet_conditioning_scale=scales,
-               control_mask=masks)
+    gen = dict(prompt=PROMPT, 
+                negative_prompt=NEG,
+                num_inference_steps=STEPS, 
+                guidance_scale=CFG,
+                image=images, 
+                controlnet_conditioning_scale=scales,
+                control_mask=masks)
 
     if use_style:
     
@@ -128,7 +131,7 @@ def main(ctrl, use_style, gpu_idx):
     else:
         out = pipe(**gen).images[0]
 
-    fname = OUTDIR / f"s3_both_scale_0.63_0.7_thresh_10_50.png"
+    fname = OUTDIR / f"s3_initial.png"
     out.save(fname); print("✅ saved →", fname)
 
 # ─────────────────── CLI ───────────────────
