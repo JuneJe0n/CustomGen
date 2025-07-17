@@ -15,7 +15,7 @@ PROMPT = "a baby sitting, clear facial features, detailed, realistic, smooth col
 NEG = "(lowres, bad quality, watermark, disjointed, strange limbs, cut off, bad anatomymissing limbs, fused fingers)"
 FACE_IMG  = Path("/data2/jiyoon/custom/data/face/00000.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p2.jpeg")
-STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s3.png")
+STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s11.jpg")
 
 CN_HED     = "/data2/jiyoon/custom/ckpts/controlnet-union-sdxl-1.0"
 BASE_SDXL  = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -26,7 +26,7 @@ COND_HED     = 0.8
 STYLE_SCALE  = 0.8
 CFG, STEPS   = 7.0, 50
 SEED         = 42
-OUTDIR       = Path("/data2/jiyoon/custom/results/mode/8/HEDpose")
+OUTDIR       = Path("/data2/jiyoon/custom/results/mode/8/HEDfinal")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────── 유틸 ───────────────────
@@ -140,7 +140,7 @@ def main(use_style, gpu_idx):
     else:
         out = pipe(**gen_args).images[0]
 
-    fname = OUTDIR/"8_s3_softblend.png"
+    fname = OUTDIR/"s11.png"
     out.save(fname); print("✅ saved →", fname)
 
 # ─────────────────── CLI ───────────────────
