@@ -16,7 +16,8 @@ from insightface.app import FaceAnalysis
 from ip_adapter import IPAdapterXL
 
 # ─────────────────── 기본 설정 ───────────────────
-PROMPT, NEG = "a baby with clear facial features", "(lowres, bad quality, watermark)"
+PROMPT = "a baby sitting, clear facial features, detailed, realistic, "
+NEG = "(blocky, lowres, bad quality, watermark, disjointed, strange limbs, cut off, bad anatomymissing limbs, fused fingers)"
 FACE_IMG  = Path("/data2/jiyoon/custom/data/face/00000.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p2.jpeg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s3.png")
@@ -31,7 +32,7 @@ STYLE_IP  = "/data2/jiyoon/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin"
 
 
 # COND_EDGE, COND_DEPTH = 0.8, 0.6
-COND_HED, COND_DEPTH = 0.8, 0.6
+COND_HED, COND_DEPTH = 0.85, 0.6
 STYLE_SCALE, CFG      = 0.8, 7.0
 STEPS, SEED           = 50, 42
 
@@ -160,7 +161,7 @@ def main(ctrl, use_style, gpu_idx):
     else:
         out = pipe(**gen_args).images[0]
 
-    fname = OUTDIR/"7_maskedgeblur_lanczos.png" 
+    fname = OUTDIR/"16_prompt.png" 
     out.save(fname); print("✅ saved →", fname)
 
 # ─────────────────── CLI ───────────────────
