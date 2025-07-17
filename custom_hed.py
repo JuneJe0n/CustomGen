@@ -8,7 +8,7 @@ CUDA_VISIBLE_DEVICES=1,2 python custom_canny_face.py --ctrl both --style --gpu 1
 """
 import argparse, cv2, torch, numpy as np
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageFilter
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
 from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
 from controlnet_aux import MidasDetector, HEDdetector # HEDdetector 추가
@@ -45,7 +45,7 @@ def to_sdxl_res(img, base=64, short=1024, long=1024):
     w, h = img.size
     r = short / min(w, h); w, h = int(w*r), int(h*r)
     r = long  / max(w, h); w, h = int(w*r), int(h*r)
-    return img.resize(((w//base)*base, (h//base)*base), Image.BILINEAR)
+    return img.resize(((w//base)*base, (h//base)*base), Image.LANCZOS)
 
 def depth_to_rgb(arr):
     if isinstance(arr, Image.Image):
@@ -70,7 +70,7 @@ def main(ctrl, use_style, gpu_idx):
     )
     face_det.prepare(ctx_id=gpu_idx, det_size=(640, 640))
     midas = MidasDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
-    hed = HEDdetector.from_pretrained("lllyasviel/Annotators").to(DEVICE) # HED detector 초기화
+    hed = HEDdetector.from_pretrained("lllyasviel/Annotators").to(DEVICE) 
 
     # 0. 이미지 로딩
     face_im   = to_sdxl_res(load_rgb(FACE_IMG))
@@ -89,26 +89,30 @@ def main(ctrl, use_style, gpu_idx):
     mask_canvas = np.zeros((h_pose, w_pose, 3), dtype=np.uint8)
     mask_canvas[y1:y2, x1:x2] = 255
     mask_pil = Image.fromarray(mask_canvas)
+    mask_pil = mask_pil.filter(ImageFilter.GaussianBlur(radius=10))
 
     # 1-B. face bbox → HED edge 추출
     face_cv = cv2.cvtColor(np.array(face_im), cv2.COLOR_RGB2BGR)
     f_info  = max(face_det.get(face_cv), key=lambda d:(d['bbox'][2]-d['bbox'][0])*(d['bbox'][3]-d['bbox'][1]))
     fx1, fy1, fx2, fy2 = map(int, f_info['bbox'])
-    face_crop_pil = face_im.crop((fx1, fy1, fx2, fy2)) # PIL Image로 크롭
-    f_edges_pil = hed(face_crop_pil, safe=False, scribble=False) # HED 적용
+    face_crop_pil = face_im.crop((fx1, fy1, fx2, fy2))
+    f_edges_pil = hed(face_crop_pil, safe=False, scribble=False) 
 
     # pose 얼굴 bbox 사이즈로 리사이즈
     pw, ph = x2 - x1, y2 - y1
-    edge_resized_pil = f_edges_pil.resize((pw, ph), Image.BILINEAR)
+    edge_resized_pil = f_edges_pil.resize((pw, ph), Image.LANCZOS)
 
+    edge_arr = np.array(edge_resized_pil).clip(0, 255).astype(np.uint8)
     edge_canvas_np = np.zeros_like(mask_canvas)
-    edge_canvas_np[y1:y2, x1:x2] = np.array(edge_resized_pil)
-    edge_pil = Image.fromarray(edge_canvas_np)
-    edge_pil.save(OUTDIR/"hed_edge.png") # 파일명 변경
+    edge_canvas_np[y1:y2, x1:x2] = edge_arr
+    edge_pil = Image.fromarray(edge_canvas_np).convert("RGB")  
+
+    edge_pil.save(OUTDIR/"hed_edge.png") 
     mask_pil.save(OUTDIR/"mask.png")
 
+
     # 2. pose depth
-    depth_pil = depth_to_rgb(midas(pose_im)).resize(pose_im.size, Image.BILINEAR)
+    depth_pil = depth_to_rgb(midas(pose_im)).resize(pose_im.size, Image.LANCZOS)
     depth_pil.save(OUTDIR/"depth.png")
 
     # 3. ControlNet 설정
@@ -156,14 +160,14 @@ def main(ctrl, use_style, gpu_idx):
     else:
         out = pipe(**gen_args).images[0]
 
-    fname = OUTDIR/"2_hedmodel.png" # 출력 파일명도 HED로 변경
+    fname = OUTDIR/"7_maskedgeblur_lanczos.png" 
     out.save(fname); print("✅ saved →", fname)
 
 # ─────────────────── CLI ───────────────────
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--ctrl",  choices=["edge", "depth", "both"], required=True,
-                    help="'edge' = 얼굴 HED, 'depth' = depth, 'both' = 둘 다") # 도움말도 HED로 변경
+                    help="'edge' = 얼굴 HED, 'depth' = depth, 'both' = 둘 다") 
     ap.add_argument("--style", action="store_true", help="IP-Adapter 스타일 주입")
     ap.add_argument("--gpu",   type=int, default=0,
                     help="CUDA_VISIBLE_DEVICES 안 논리 GPU 번호 (default=0)")
