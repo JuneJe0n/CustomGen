@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# custom_hed_facepose.py  (2025-07-17 rev-E)
+# custom_hed_facepose_softblend.py  (2025-07-17 rev-F)
 
 import argparse, cv2, torch, numpy as np
 from pathlib import Path
@@ -15,7 +15,7 @@ PROMPT = "a baby sitting, clear facial features, detailed, realistic, smooth col
 NEG = "(lowres, bad quality, watermark, disjointed, strange limbs, cut off, bad anatomymissing limbs, fused fingers)"
 FACE_IMG  = Path("/data2/jiyoon/custom/data/face/00000.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p2.jpeg")
-STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s2.png")
+STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s3.png")
 
 CN_HED     = "/data2/jiyoon/custom/ckpts/controlnet-union-sdxl-1.0"
 BASE_SDXL  = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -67,25 +67,37 @@ def main(use_style, gpu_idx):
     x2, y2 = min(w_pose, x2), min(h_pose, y2)
     pw, ph = x2 - x1, y2 - y1
 
-    # ───── face bbox → face HED
+    # ───── face 이미지 → face HED
     face_cv = cv2.cvtColor(np.array(face_im), cv2.COLOR_RGB2BGR)
     f_info  = max(face_det.get(face_cv), key=lambda d:(d['bbox'][2]-d['bbox'][0])*(d['bbox'][3]-d['bbox'][1]))
     fx1, fy1, fx2, fy2 = map(int, f_info['bbox'])
     face_crop_pil = face_im.crop((fx1, fy1, fx2, fy2))
     face_hed_pil = hed(face_crop_pil, safe=False, scribble=False)
     face_hed_resized = face_hed_pil.resize((pw, ph), Image.LANCZOS)
-    face_hed_np = np.array(face_hed_resized).astype(np.uint8)
+    face_hed_np = np.array(face_hed_resized).astype(np.float32)
 
-    # ───── 전체 pose → pose HED
+    # ───── pose 전체 HED
     pose_hed_pil = hed(pose_im, safe=False, scribble=False).resize(pose_im.size, Image.LANCZOS)
-    pose_hed_np = np.array(pose_hed_pil).astype(np.uint8)
+    pose_hed_np = np.array(pose_hed_pil).astype(np.float32)
 
-    # ───── 병합: 얼굴 영역만 face hedge로 덮어쓰기
-    pose_hed_np[y1:y2, x1:x2] = face_hed_np
-    merged_hed_pil = Image.fromarray(pose_hed_np).convert("RGB")
-    merged_hed_pil.save(OUTDIR/"merged_hed.png")
+    # ───── 소프트 마스킹 (가우시안 블렌딩)
+    # soft mask 생성
+    mask = np.zeros((h_pose, w_pose), dtype=np.float32)
+    mask[y1:y2, x1:x2] = 1.0
+    mask = cv2.GaussianBlur(mask, (31, 31), sigmaX=10, sigmaY=10)[..., None]  # shape (H, W, 1)
 
-    # ───── ControlNet 세팅
+    # face HED 전체 canvas에 위치 맞춰 삽입
+    face_canvas_np = np.zeros_like(pose_hed_np).astype(np.float32)
+    face_canvas_np[y1:y2, x1:x2] = face_hed_np
+
+    # blending
+    pose_np = pose_hed_np.astype(np.float32)
+    blended_np = mask * face_canvas_np + (1 - mask) * pose_np
+    blended_np = blended_np.clip(0, 255).astype(np.uint8)
+    merged_hed_pil = Image.fromarray(blended_np).convert("RGB")
+    merged_hed_pil.save(OUTDIR/"merged_hed_soft.png")
+
+    # ───── ControlNet 구성
     controlnets, images, scales, masks = [], [], [], []
     controlnets.append(ControlNetModel.from_pretrained(CN_HED, torch_dtype=DTYPE))
     images.append(merged_hed_pil)
@@ -128,7 +140,7 @@ def main(use_style, gpu_idx):
     else:
         out = pipe(**gen_args).images[0]
 
-    fname = OUTDIR/"6_0.8_0.8.png"
+    fname = OUTDIR/"8_s3_softblend.png"
     out.save(fname); print("✅ saved →", fname)
 
 # ─────────────────── CLI ───────────────────
