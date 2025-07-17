@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
 from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
-from controlnet_aux import MidasDetector
+from controlnet_aux import MidasDetector, HEDdetector # HEDdetector 추가
 from insightface.app import FaceAnalysis
 from ip_adapter import IPAdapterXL
 
@@ -21,18 +21,21 @@ FACE_IMG  = Path("/data2/jiyoon/custom/data/face/00000.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p2.jpeg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s3.png")
 
-CN_EDGE  = "diffusers/controlnet-canny-sdxl-1.0"
+# CN_EDGE  = "diffusers/controlnet-canny-sdxl-1.0"
+CN_HED = "/data2/jiyoon/custom/ckpts/controlnet-union-sdxl-1.0"
 CN_DEPTH = "diffusers/controlnet-depth-sdxl-1.0-small"
 BASE_SDXL= "stabilityai/stable-diffusion-xl-base-1.0"
 
 STYLE_ENC = "/data2/jiyoon/IP-Adapter/sdxl_models/image_encoder"
 STYLE_IP  = "/data2/jiyoon/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin"
 
-COND_EDGE, COND_DEPTH = 0.8, 0.6
+
+# COND_EDGE, COND_DEPTH = 0.8, 0.6
+COND_HED, COND_DEPTH = 0.8, 0.6
 STYLE_SCALE, CFG      = 0.8, 7.0
 STEPS, SEED           = 50, 42
 
-OUTDIR = Path("/data2/jiyoon/custom/results/mode/8/cannydev")
+OUTDIR = Path("/data2/jiyoon/custom/results/mode/8/HED")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────── 유틸 ───────────────────
@@ -59,7 +62,7 @@ def main(ctrl, use_style, gpu_idx):
     DTYPE  = torch.float16
     torch.manual_seed(SEED)
 
-    # detector & depth
+    # detector & depth & HED
     face_det = FaceAnalysis(
         name="antelopev2",
         root="/data2/jiyoon/InstantID",
@@ -67,6 +70,7 @@ def main(ctrl, use_style, gpu_idx):
     )
     face_det.prepare(ctx_id=gpu_idx, det_size=(640, 640))
     midas = MidasDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
+    hed = HEDdetector.from_pretrained("lllyasviel/Annotators").to(DEVICE) # HED detector 초기화
 
     # 0. 이미지 로딩
     face_im   = to_sdxl_res(load_rgb(FACE_IMG))
@@ -86,25 +90,21 @@ def main(ctrl, use_style, gpu_idx):
     mask_canvas[y1:y2, x1:x2] = 255
     mask_pil = Image.fromarray(mask_canvas)
 
-    # 1-B. face bbox → edge 추출 (GaussianBlur → Canny → dilate)
+    # 1-B. face bbox → HED edge 추출
     face_cv = cv2.cvtColor(np.array(face_im), cv2.COLOR_RGB2BGR)
     f_info  = max(face_det.get(face_cv), key=lambda d:(d['bbox'][2]-d['bbox'][0])*(d['bbox'][3]-d['bbox'][1]))
     fx1, fy1, fx2, fy2 = map(int, f_info['bbox'])
-
-    face_crop = face_cv[fy1:fy2, fx1:fx2]
-    face_crop = cv2.GaussianBlur(face_crop, (5, 5), 0)
-    edge      = cv2.Canny(face_crop, 80, 160)
-    edge      = cv2.dilate(edge, np.ones((3, 3), np.uint8), 1)
-    f_edges   = cv2.cvtColor(edge, cv2.COLOR_GRAY2RGB)
+    face_crop_pil = face_im.crop((fx1, fy1, fx2, fy2)) # PIL Image로 크롭
+    f_edges_pil = hed(face_crop_pil, safe=False, scribble=False) # HED 적용
 
     # pose 얼굴 bbox 사이즈로 리사이즈
     pw, ph = x2 - x1, y2 - y1
-    edge_resized = cv2.resize(f_edges, (pw, ph), interpolation=cv2.INTER_LINEAR)
+    edge_resized_pil = f_edges_pil.resize((pw, ph), Image.BILINEAR)
 
-    edge_canvas = np.zeros_like(mask_canvas)
-    edge_canvas[y1:y2, x1:x2] = edge_resized
-    edge_pil = Image.fromarray(edge_canvas)
-    edge_pil.save(OUTDIR/"edge.png")
+    edge_canvas_np = np.zeros_like(mask_canvas)
+    edge_canvas_np[y1:y2, x1:x2] = np.array(edge_resized_pil)
+    edge_pil = Image.fromarray(edge_canvas_np)
+    edge_pil.save(OUTDIR/"hed_edge.png") # 파일명 변경
     mask_pil.save(OUTDIR/"mask.png")
 
     # 2. pose depth
@@ -114,8 +114,8 @@ def main(ctrl, use_style, gpu_idx):
     # 3. ControlNet 설정
     controlnets, images, scales, masks = [], [], [], []
     if ctrl in ("edge", "both"):
-        controlnets.append(ControlNetModel.from_pretrained(CN_EDGE, torch_dtype=DTYPE))
-        images.append(edge_pil);  scales.append(COND_EDGE);  masks.append(mask_pil)
+        controlnets.append(ControlNetModel.from_pretrained(CN_HED, torch_dtype=DTYPE))
+        images.append(edge_pil);  scales.append(COND_HED);  masks.append(mask_pil)
     if ctrl in ("depth", "both"):
         controlnets.append(ControlNetModel.from_pretrained(CN_DEPTH, torch_dtype=DTYPE))
         images.append(depth_pil); scales.append(COND_DEPTH); masks.append(None)
@@ -156,14 +156,14 @@ def main(ctrl, use_style, gpu_idx):
     else:
         out = pipe(**gen_args).images[0]
 
-    fname = OUTDIR/"6_face2_thresh_80_160.png"
+    fname = OUTDIR/"2_hedmodel.png" # 출력 파일명도 HED로 변경
     out.save(fname); print("✅ saved →", fname)
 
 # ─────────────────── CLI ───────────────────
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--ctrl",  choices=["edge", "depth", "both"], required=True,
-                    help="'edge' = 얼굴 Canny, 'depth' = depth, 'both' = 둘 다")
+                    help="'edge' = 얼굴 HED, 'depth' = depth, 'both' = 둘 다") # 도움말도 HED로 변경
     ap.add_argument("--style", action="store_true", help="IP-Adapter 스타일 주입")
     ap.add_argument("--gpu",   type=int, default=0,
                     help="CUDA_VISIBLE_DEVICES 안 논리 GPU 번호 (default=0)")
