@@ -129,12 +129,7 @@ class IPAdapter:
                         skip=True
                     ).to(self.device, dtype=torch.float16)
         unet.set_attn_processor(attn_procs)
-        # if hasattr(self.pipe, "controlnet"):
-        #     if isinstance(self.pipe.controlnet, MultiControlNetModel):
-        #         for controlnet in self.pipe.controlnet.nets:
-        #             controlnet.set_attn_processor(CNAttnProcessor(num_tokens=self.num_tokens))
-        #     else:
-        #         self.pipe.controlnet.set_attn_processor(CNAttnProcessor(num_tokens=self.num_tokens))
+       
         if not hasattr(self.pipe, "controlnet"):
             return 
 
