@@ -1,5 +1,6 @@
-#!/usr/bin/env python
-# custom_hed_facepose_softblend.py  (2025-07-17 rev-F)
+"""
+face bbox HED + pose HED
+"""
 
 import argparse, cv2, torch, numpy as np
 from pathlib import Path

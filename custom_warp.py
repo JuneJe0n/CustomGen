@@ -1,6 +1,7 @@
-#!/usr/bin/env python
-# enhanced_face_alignment.py - 개선된 얼굴 정렬 파이프라인
-
+"""
+Use face lmks, face mesh to align face
+Extract HED from aligned face & pose
+"""
 import argparse, cv2, torch, numpy as np
 from pathlib import Path
 from PIL import Image, ImageFilter
@@ -15,7 +16,7 @@ import mediapipe as mp
 # ─────────────────── 설정 ───────────────────
 PROMPT = "a baby sitting, clear facial features, detailed, realistic, smooth colors"
 NEG = "(lowres, bad quality, watermark, disjointed, strange limbs, cut off, bad anatomymissing limbs, fused fingers)"
-FACE_IMG  = Path("/data2/jeesoo/FFHQ/00000/00000.png")
+FACE_IMG  = Path("/data2/jeesoo/FFHQ/07000/07006.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p2.jpeg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s3.png")
 
@@ -28,7 +29,7 @@ COND_HED     = 0.8
 STYLE_SCALE  = 0.8
 CFG, STEPS   = 7.0, 50
 SEED         = 42
-OUTDIR       = Path("/data2/jiyoon/custom/results/claude/00000")
+OUTDIR       = Path("/data2/jiyoon/custom/results/warp/07006")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────── 유틸 ───────────────────
@@ -97,7 +98,7 @@ def align_face_with_landmarks(face_img, pose_img, face_det):
         print(f"⚠️  랜드마크 정렬 실패: {e}, 기존 방법 사용")
         return face_img, None
 
-def create_mediapipe_face_mask(img):
+def create_mediapipe_face_mask(img, save_path=None):
     """MediaPipe Face Mesh로 정밀한 얼굴 마스크 생성"""
     
     mp_face_mesh = mp.solutions.face_mesh
@@ -136,26 +137,35 @@ def create_mediapipe_face_mask(img):
             # 가우시안 블러로 부드럽게
             mask = cv2.GaussianBlur(mask, (15, 15), sigmaX=5, sigmaY=5)
             
+            # 마스크 시각화 저장
+            if save_path:
+                mask_vis = (mask * 255).astype(np.uint8)
+                mask_pil = Image.fromarray(mask_vis, mode='L')
+                mask_pil.save(save_path)
+                print(f"💾 MediaPipe 마스크 저장: {save_path}")
+            
             return mask[..., None]  # (H, W, 1)
     
     return None
 
-def create_enhanced_soft_mask(pose_img, bbox, use_mediapipe=True):
+def create_enhanced_soft_mask(pose_img, bbox, save_dir=None):
     """향상된 소프트 마스크 생성"""
     
     h, w = pose_img.size[::-1]
     x1, y1, x2, y2 = bbox
     
-    if use_mediapipe:
-        # MediaPipe로 정밀한 얼굴 마스크 시도
-        mp_mask = create_mediapipe_face_mask(pose_img)
-        if mp_mask is not None:
-            # 얼굴 영역만 추출하여 반환
-            roi_mask = np.zeros_like(mp_mask)
-            roi_mask[y1:y2, x1:x2] = mp_mask[y1:y2, x1:x2]
-            return roi_mask
+    # MediaPipe로 정밀한 얼굴 마스크 시도
+    mp_mask_path = save_dir / "mediapipe_mask.png" if save_dir else None
+    mp_mask = create_mediapipe_face_mask(pose_img, mp_mask_path)
+    
+    if mp_mask is not None:
+        # 얼굴 영역만 추출하여 반환
+        roi_mask = np.zeros_like(mp_mask)
+        roi_mask[y1:y2, x1:x2] = mp_mask[y1:y2, x1:x2]
+        return roi_mask
     
     # MediaPipe 실패시 기존 방식 사용 (개선된 버전)
+    print("⚠️  MediaPipe 마스크 생성 실패, 기존 방식 사용")
     mask = np.zeros((h, w), dtype=np.float32)
     mask[y1:y2, x1:x2] = 1.0
     
@@ -169,7 +179,7 @@ def create_enhanced_soft_mask(pose_img, bbox, use_mediapipe=True):
     return mask[..., None]
 
 # ─────────────────── 메인 (개선된 버전) ───────────────────
-def main(use_style, gpu_idx, alignment_method="landmark"):
+def main(use_style, gpu_idx):
     DEVICE = f"cuda:{gpu_idx}"
     DTYPE  = torch.float16
     torch.manual_seed(SEED)
@@ -180,7 +190,7 @@ def main(use_style, gpu_idx, alignment_method="landmark"):
         root="/data2/jiyoon/InstantID",
         providers=[('CUDAExecutionProvider', {'device_id': gpu_idx}), 'CPUExecutionProvider']
     )
-    face_det.prepare(ctx_id=gpu_idx, det_size=(640, 640))
+    face_det.prepare(ctx_id=gpu_idx, det_size=(640, 640), det_thresh=0.3)
     hed = HEDdetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
 
     # ───── 이미지 불러오기
@@ -189,51 +199,22 @@ def main(use_style, gpu_idx, alignment_method="landmark"):
     style_pil = load_rgb(STYLE_IMG)
     w_pose, h_pose = pose_im.size
 
-    print(f"🔄 정렬 방법: {alignment_method}")
+    print("🔄 랜드마크 기반 얼굴 정렬 사용")
+    print(f"Face image size: {face_im.size}")
+    print(f"Pose image size: {pose_im.size}")
+    # ───── 랜드마크 기반 얼굴 정렬
+    aligned_face, aligned_bbox = align_face_with_landmarks(face_im, pose_im, face_det)
     
-    if alignment_method == "landmark":
-        # ───── 랜드마크 기반 얼굴 정렬
-        aligned_face, aligned_bbox = align_face_with_landmarks(face_im, pose_im, face_det)
-        
-        if aligned_bbox is None:
-            # 랜드마크 정렬 실패시 기존 방법 사용
-            print("📦 기존 bbox 방법 사용")
-            pose_cv = cv2.cvtColor(np.array(pose_im), cv2.COLOR_RGB2BGR)
-            p_info = max(face_det.get(pose_cv), key=lambda d:(d['bbox'][2]-d['bbox'][0])*(d['bbox'][3]-d['bbox'][1]))
-            x1, y1, x2, y2 = map(int, p_info['bbox'])
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(w_pose, x2), min(h_pose, y2)
-            
-            # face HED 추출 (기존 방식)
-            face_cv = cv2.cvtColor(np.array(face_im), cv2.COLOR_RGB2BGR)
-            f_info = max(face_det.get(face_cv), key=lambda d:(d['bbox'][2]-d['bbox'][0])*(d['bbox'][3]-d['bbox'][1]))
-            fx1, fy1, fx2, fy2 = map(int, f_info['bbox'])
-            face_crop = face_im.crop((fx1, fy1, fx2, fy2))
-            face_hed = hed(face_crop, safe=False, scribble=False)
-            face_hed_resized = face_hed.resize((x2-x1, y2-y1), Image.LANCZOS)
-            face_hed_np = np.array(face_hed_resized).astype(np.float32)
-            
-        else:
-            print("✨ 랜드마크 정렬 성공")
-            x1, y1, x2, y2 = aligned_bbox
-            
-            # 정렬된 얼굴에서 HED 추출
-            face_crop = aligned_face.crop((x1, y1, x2, y2))
-            face_hed = hed(face_crop, safe=False, scribble=False)
-            
-            # 크기를 target region에 맞게 조정
-            target_w, target_h = x2 - x1, y2 - y1
-            face_hed_resized = face_hed.resize((target_w, target_h), Image.LANCZOS)
-            face_hed_np = np.array(face_hed_resized).astype(np.float32)
-    
-    else:
-        # 기존 방법
+    if aligned_bbox is None:
+        # 랜드마크 정렬 실패시 기존 방법 사용
+        print("📦 기존 bbox 방법 사용")
         pose_cv = cv2.cvtColor(np.array(pose_im), cv2.COLOR_RGB2BGR)
         p_info = max(face_det.get(pose_cv), key=lambda d:(d['bbox'][2]-d['bbox'][0])*(d['bbox'][3]-d['bbox'][1]))
         x1, y1, x2, y2 = map(int, p_info['bbox'])
         x1, y1 = max(0, x1), max(0, y1)
         x2, y2 = min(w_pose, x2), min(h_pose, y2)
         
+        # face HED 추출 
         face_cv = cv2.cvtColor(np.array(face_im), cv2.COLOR_RGB2BGR)
         f_info = max(face_det.get(face_cv), key=lambda d:(d['bbox'][2]-d['bbox'][0])*(d['bbox'][3]-d['bbox'][1]))
         fx1, fy1, fx2, fy2 = map(int, f_info['bbox'])
@@ -241,13 +222,26 @@ def main(use_style, gpu_idx, alignment_method="landmark"):
         face_hed = hed(face_crop, safe=False, scribble=False)
         face_hed_resized = face_hed.resize((x2-x1, y2-y1), Image.LANCZOS)
         face_hed_np = np.array(face_hed_resized).astype(np.float32)
+        
+    else:
+        print("✨ 랜드마크 정렬 성공")
+        x1, y1, x2, y2 = aligned_bbox
+        
+        # 정렬된 얼굴에서 HED 추출
+        face_crop = aligned_face.crop((x1, y1, x2, y2))
+        face_hed = hed(face_crop, safe=False, scribble=False)
+        
+        # 크기를 target region에 맞게 조정
+        target_w, target_h = x2 - x1, y2 - y1
+        face_hed_resized = face_hed.resize((target_w, target_h), Image.LANCZOS)
+        face_hed_np = np.array(face_hed_resized).astype(np.float32)
 
     # ───── pose 전체 HED
     pose_hed_pil = hed(pose_im, safe=False, scribble=False).resize(pose_im.size, Image.LANCZOS)
     pose_hed_np = np.array(pose_hed_pil).astype(np.float32)
 
-    # ───── 향상된 소프트 마스킹
-    mask = create_enhanced_soft_mask(pose_im, (x1, y1, x2, y2), use_mediapipe=True)
+    # ───── 향상된 소프트 마스킹 (MediaPipe 마스크 저장)
+    mask = create_enhanced_soft_mask(pose_im, (x1, y1, x2, y2), save_dir=OUTDIR)
 
     # face HED를 전체 canvas에 배치
     face_canvas_np = np.zeros_like(pose_hed_np).astype(np.float32)
@@ -306,7 +300,7 @@ def main(use_style, gpu_idx, alignment_method="landmark"):
     else:
         out = pipe(**gen_args).images[0]
 
-    fname = OUTDIR/f"enhanced_{alignment_method}.png"
+    fname = OUTDIR/"enhanced_landmark.png"
     out.save(fname)
     print(f"✅ 최종 결과 저장: {fname}")
 
@@ -315,7 +309,5 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--style", action="store_true", help="IP-Adapter 스타일 주입")
     ap.add_argument("--gpu", type=int, default=0, help="GPU 번호")
-    ap.add_argument("--align", choices=["bbox", "landmark"], default="landmark", 
-                    help="얼굴 정렬 방법: bbox(기존) vs landmark(개선)")
     args = ap.parse_args()
-    main(args.style, args.gpu, args.align)
+    main(args.style, args.gpu)
