@@ -16,7 +16,7 @@ import mediapipe as mp
 # ─────────────────── 설정 ───────────────────
 PROMPT = "a baby sitting, clear facial features, detailed, realistic, smooth colors"
 NEG = "(lowres, bad quality, watermark, disjointed, strange limbs, cut off, bad anatomymissing limbs, fused fingers)"
-FACE_IMG  = Path("/data2/jeesoo/FFHQ/07000/07006.png")
+FACE_IMG  = Path("/data2/jeesoo/FFHQ/64000/64000.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p2.jpeg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s3.png")
 
@@ -29,7 +29,7 @@ COND_HED     = 0.8
 STYLE_SCALE  = 0.8
 CFG, STEPS   = 7.0, 50
 SEED         = 42
-OUTDIR       = Path("/data2/jiyoon/custom/results/warp/07006")
+OUTDIR       = Path("/data2/jiyoon/custom/results/warp/64000")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────── 유틸 ───────────────────
