@@ -3,6 +3,7 @@ Use face lmks, face mesh to align face
 Extract HED from aligned face & pose
 """
 import argparse, cv2, torch, numpy as np
+import gc
 from pathlib import Path
 from PIL import Image, ImageFilter
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
@@ -155,7 +156,7 @@ def create_enhanced_soft_mask(pose_img, bbox, save_dir=None):
     x1, y1, x2, y2 = bbox
     
     # MediaPipe로 정밀한 얼굴 마스크 시도
-    mp_mask_path = save_dir / "mediapipe_mask.png" if save_dir else None
+    mp_mask_path = save_dir / "00_mediapipe_mask.png" if save_dir else None
     mp_mask = create_mediapipe_face_mask(pose_img, mp_mask_path)
     
     if mp_mask is not None:
@@ -183,6 +184,13 @@ def main(use_style, gpu_idx):
     DEVICE = f"cuda:{gpu_idx}"
     DTYPE  = torch.float16
     torch.manual_seed(SEED)
+    
+    # Clear GPU memory at start
+    gc.collect()
+    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.set_per_process_memory_fraction(0.85, device=gpu_idx)
+        print(f"📊 GPU {gpu_idx} 메모리 사용량: {torch.cuda.memory_allocated(gpu_idx)/1024**3:.1f}GB / {torch.cuda.max_memory_allocated(gpu_idx)/1024**3:.1f}GB")
 
     # ───── 얼굴 감지 & HED detector
     face_det = FaceAnalysis(
@@ -191,19 +199,33 @@ def main(use_style, gpu_idx):
         providers=[('CUDAExecutionProvider', {'device_id': gpu_idx}), 'CPUExecutionProvider']
     )
     face_det.prepare(ctx_id=gpu_idx, det_size=(640, 640), det_thresh=0.3)
-    hed = HEDdetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
+    
+    # Load HED on CPU first
+    hed = HEDdetector.from_pretrained("lllyasviel/Annotators")
+    print(f"💾 HED detector loaded on CPU")
 
     # ───── 이미지 불러오기
     face_im = to_sdxl_res(load_rgb(FACE_IMG))
     pose_im = to_sdxl_res(load_rgb(POSE_IMG))
     style_pil = load_rgb(STYLE_IMG)
     w_pose, h_pose = pose_im.size
+    
+    # 입력 이미지들 저장
+    face_im.save(OUTDIR/"01_input_face.png")
+    pose_im.save(OUTDIR/"02_input_pose.png")
+    style_pil.save(OUTDIR/"03_input_style.png")
+    print(f"💾 입력 이미지 저장: {OUTDIR}")
 
     print("🔄 랜드마크 기반 얼굴 정렬 사용")
     print(f"Face image size: {face_im.size}")
     print(f"Pose image size: {pose_im.size}")
     # ───── 랜드마크 기반 얼굴 정렬
     aligned_face, aligned_bbox = align_face_with_landmarks(face_im, pose_im, face_det)
+    
+    # 정렬된 얼굴 저장
+    if aligned_face:
+        aligned_face.save(OUTDIR/"04_aligned_face.png")
+        print(f"💾 정렬된 얼굴 저장: {OUTDIR/'04_aligned_face.png'}")
     
     if aligned_bbox is None:
         # 랜드마크 정렬 실패시 기존 방법 사용
@@ -219,9 +241,18 @@ def main(use_style, gpu_idx):
         f_info = max(face_det.get(face_cv), key=lambda d:(d['bbox'][2]-d['bbox'][0])*(d['bbox'][3]-d['bbox'][1]))
         fx1, fy1, fx2, fy2 = map(int, f_info['bbox'])
         face_crop = face_im.crop((fx1, fy1, fx2, fy2))
+        face_crop.save(OUTDIR/"05_face_crop_bbox.png")
+        # Move HED to GPU temporarily
+        hed = hed.to(DEVICE)
         face_hed = hed(face_crop, safe=False, scribble=False)
+        # Move back to CPU to free memory
+        hed = hed.to('cpu')
+        torch.cuda.empty_cache()
+        face_hed.save(OUTDIR/"06_face_hed_bbox.png")
         face_hed_resized = face_hed.resize((x2-x1, y2-y1), Image.LANCZOS)
+        face_hed_resized.save(OUTDIR/"07_face_hed_resized_bbox.png")
         face_hed_np = np.array(face_hed_resized).astype(np.float32)
+        print(f"💾 bbox 방식 HED 이미지 저장: {OUTDIR}")
         
     else:
         print("✨ 랜드마크 정렬 성공")
@@ -229,16 +260,33 @@ def main(use_style, gpu_idx):
         
         # 정렬된 얼굴에서 HED 추출
         face_crop = aligned_face.crop((x1, y1, x2, y2))
+        face_crop.save(OUTDIR/"05_face_crop_aligned.png")
+        # Move HED to GPU temporarily
+        hed = hed.to(DEVICE)
         face_hed = hed(face_crop, safe=False, scribble=False)
+        # Move back to CPU to free memory
+        hed = hed.to('cpu')
+        torch.cuda.empty_cache()
+        face_hed.save(OUTDIR/"06_face_hed_aligned.png")
         
         # 크기를 target region에 맞게 조정
         target_w, target_h = x2 - x1, y2 - y1
         face_hed_resized = face_hed.resize((target_w, target_h), Image.LANCZOS)
+        face_hed_resized.save(OUTDIR/"07_face_hed_resized_aligned.png")
         face_hed_np = np.array(face_hed_resized).astype(np.float32)
+        print(f"💾 랜드마크 방식 HED 이미지 저장: {OUTDIR}")
 
     # ───── pose 전체 HED
+    # Move HED to GPU temporarily
+    hed = hed.to(DEVICE)
     pose_hed_pil = hed(pose_im, safe=False, scribble=False).resize(pose_im.size, Image.LANCZOS)
+    # Move back to CPU and clear memory
+    hed = hed.to('cpu')
+    del hed
+    torch.cuda.empty_cache()
+    pose_hed_pil.save(OUTDIR/"08_pose_hed.png")
     pose_hed_np = np.array(pose_hed_pil).astype(np.float32)
+    print(f"💾 pose HED 저장: {OUTDIR/'08_pose_hed.png'}")
 
     # ───── 향상된 소프트 마스킹 (MediaPipe 마스크 저장)
     mask = create_enhanced_soft_mask(pose_im, (x1, y1, x2, y2), save_dir=OUTDIR)
@@ -246,6 +294,9 @@ def main(use_style, gpu_idx):
     # face HED를 전체 canvas에 배치
     face_canvas_np = np.zeros_like(pose_hed_np).astype(np.float32)
     face_canvas_np[y1:y2, x1:x2] = face_hed_np
+    face_canvas_pil = Image.fromarray(face_canvas_np.astype(np.uint8))
+    face_canvas_pil.save(OUTDIR/"09_face_canvas.png")
+    print(f"💾 face canvas 저장: {OUTDIR/'09_face_canvas.png'}")
 
     # 소프트 블렌딩
     pose_np = pose_hed_np.astype(np.float32)
@@ -253,9 +304,14 @@ def main(use_style, gpu_idx):
     blended_np = blended_np.clip(0, 255).astype(np.uint8)
     merged_hed_pil = Image.fromarray(blended_np).convert("RGB")
     
+    # 블렌딩 시각화를 위한 중간 이미지들 저장
+    mask_vis = Image.fromarray((mask.squeeze() * 255).astype(np.uint8), mode='L')
+    mask_vis.save(OUTDIR/"10_soft_mask.png")
+    print(f"💾 소프트 마스크 저장: {OUTDIR/'10_soft_mask.png'}")
+    
     # 결과 저장
-    merged_hed_pil.save(OUTDIR/"merged_hed_enhanced.png")
-    print(f"💾 HED 저장: {OUTDIR/'merged_hed_enhanced.png'}")
+    merged_hed_pil.save(OUTDIR/"11_merged_hed_enhanced.png")
+    print(f"💾 HED 저장: {OUTDIR/'11_merged_hed_enhanced.png'}")
 
     # ───── ControlNet 구성
     controlnets, images, scales, masks = [], [], [], []
@@ -273,11 +329,11 @@ def main(use_style, gpu_idx):
 
     pipe.enable_vae_tiling()
     pipe.enable_xformers_memory_efficient_attention()
-
+    
+    # Enable CPU offloading for memory efficiency
     if not use_style:
         pipe.enable_sequential_cpu_offload()
-    else:
-        pipe.to(DEVICE)
+    torch.cuda.empty_cache()
 
     # ───── 이미지 생성
     gen_args = dict(
@@ -291,18 +347,32 @@ def main(use_style, gpu_idx):
     )
 
     if use_style:
+        # Clear memory before loading IP-Adapter
+        torch.cuda.empty_cache()
+        
+        # Temporarily move pipe to correct device for IP-Adapter
+        pipe.to(DEVICE)
+        
         ip = IPAdapterXL(
             pipe, STYLE_ENC, STYLE_IP, DEVICE,
             target_blocks=["up_blocks.0.attentions.1"]
         )
         out = ip.generate(pil_image=style_pil, scale=STYLE_SCALE,
                           seed=SEED, **gen_args)[0]
+        # Clean up IP-Adapter
+        del ip
+        torch.cuda.empty_cache()
     else:
         out = pipe(**gen_args).images[0]
 
-    fname = OUTDIR/"enhanced_landmark.png"
+    # Final cleanup
+    del pipe
+    torch.cuda.empty_cache()
+    
+    fname = OUTDIR/"12_final_result.png"
     out.save(fname)
     print(f"✅ 최종 결과 저장: {fname}")
+    print(f"🧼 GPU 메모리 정리 완료")
 
 # ─────────────────── CLI ───────────────────
 if __name__ == "__main__":
