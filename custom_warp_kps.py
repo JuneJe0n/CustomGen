@@ -1,7 +1,6 @@
 """
-- Face ID: from FACE_IMG (via aligned face HED + optional style)
-- Pose: body+hands kps (face kps removed by default)
-- Composite canvas = pose image + softly pasted aligned face (for consistent OpenPose)
+face : HED + openpose kps
+pose : openpose kps
 """
 import argparse, cv2, torch, numpy as np
 from pathlib import Path
@@ -15,9 +14,9 @@ from skimage.transform import SimilarityTransform, warp
 import mediapipe as mp
 
 # ─────────────────── Settings ───────────────────
-PROMPT = "a baby sitting, clear facial features, detailed, realistic, smooth colors"
+PROMPT = "a baby girl sitting, clear facial features, detailed, realistic, smooth colors"
 NEG = "(lowres, bad quality, watermark, disjointed, strange limbs, cut off, bad anatomymissing limbs, fused fingers)"
-FACE_IMG  = Path("/data2/jeesoo/FFHQ/00000/00000.png")
+FACE_IMG  = Path("/data2/jeesoo/FFHQ/00000/00003.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p2.jpeg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s3.png")
 
@@ -32,7 +31,7 @@ COND_POSE    = 0.6
 STYLE_SCALE  = 0.8
 CFG, STEPS   = 7.0, 50
 SEED         = 42
-OUTDIR       = Path("/data2/jiyoon/custom/results/face_kps/00000/face_false")
+OUTDIR       = Path("/data2/jiyoon/custom/results/face_kps/00003/face_true")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────── Globals ───────────────────
@@ -58,7 +57,7 @@ def expand_bbox(bbox, scale, W, H):
     nx2, ny2 = int(min(W, cx + w/2)), int(min(H, cy + h/2))
     return [nx1, ny1, nx2, ny2]
 
-def extract_pose_keypoints(img, pose_detector, include_body=True, include_hand=True, include_face=False, save_name="01_pose_kps_body_hands_only.png"):
+def extract_pose_keypoints(img, pose_detector, include_body=True, include_hand=True, include_face=True, save_name="01_pose_kps.png"):
     """
     Default include_face=False (i.e., remove facial kps).
     """
@@ -210,7 +209,7 @@ def main(use_style, gpu_idx, low_memory=False):
 
     pose_kps = extract_pose_keypoints(
         composite, openpose,
-        include_body=True, include_hand=True, include_face=False,  
+        include_body=True, include_hand=True, include_face=True,  
         save_name="01_pose_kps_body_hands_only.png"
     )
     del openpose; torch.cuda.empty_cache()
