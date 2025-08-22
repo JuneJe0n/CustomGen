@@ -313,6 +313,10 @@ class IPAdapterXL(IPAdapter):
                 do_classifier_free_guidance=True,
                 negative_prompt=negative_prompt,
             )
+            # Ensure all tensors are on the same device
+            image_prompt_embeds = image_prompt_embeds.to(prompt_embeds.device)
+            uncond_image_prompt_embeds = uncond_image_prompt_embeds.to(negative_prompt_embeds.device)
+            
             prompt_embeds = torch.cat([prompt_embeds, image_prompt_embeds], dim=1) # img-content
             negative_prompt_embeds = torch.cat([negative_prompt_embeds, uncond_image_prompt_embeds], dim=1) # empty
 
