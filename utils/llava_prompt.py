@@ -1,6 +1,5 @@
 """
-Code that extracts gender, age, and accesories from face pic
-
+Code that extracts gender, age, and accessories from face pic
 Base model : LLaVA v1.5
 """
 import torch
@@ -10,49 +9,49 @@ import json
 import re
 from typing import Dict, List, Optional
 
+PROMPT = """
+USER: <image>
+Please analyze this image and identify any people present. For each person you see, provide:
+
+1. Gender/Age category: Choose from: woman, girl, man, boy, baby
+2. Accessories: Identify if they are wearing: glasses, sunglasses, or none
+
+Format your response as a list.
+Example output :
+- [woman]
+- [man, sunglasses]
+
+If no people are visible, respond with: []
+
+A:
+"""
+
+CONVERSATION = [
+    {
+        "role": "user",
+        "content": [
+            {"type": "image"},
+            {"type": "text", "text": PROMPT},
+        ],
+    },
+]
+
 class PersonAnalysisPipeline:
-    def __init__(self, model_name: str = "llava-hf/llava-1.5-7b-hf"):
-        """
-        Initialize the LLaVA 1.5-based person analysis pipeline.
-        
-        Args:
-            model_name: HuggingFace model identifier for LLaVA 1.5
-                       Options: "llava-hf/llava-1.5-7b-hf" or "llava-hf/llava-1.5-13b-hf"
-        """
+    def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Loading LLaVA 1.5 model: {model_name}")
         
         # Load LLaVA 1.5 processor and model
-        self.processor = LlavaProcessor.from_pretrained(model_name)
+        self.processor = LlavaProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf")
         self.model = LlavaForConditionalGeneration.from_pretrained(
-            model_name,
+            "llava-hf/llava-1.5-7b-hf",  # Fixed: was using undefined 'model_name'
             torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
             low_cpu_mem_usage=True,
         ).to(self.device)
         
         print("Model loaded successfully!")
         
-        # Define the structured prompt for person analysis
-        self.analysis_prompt = """USER: <image>
-Please analyze this image and identify any people present. For each person you see, provide:
-
-1. Gender/Age category: Choose from: woman, girl, man, boy, baby
-2. Accessories: Identify if they are wearing: glasses, sunglasses, or none
-
-Format your response as JSON:
-{
-  "people": [
-    {
-      "person_id": 1,
-      "gender_age": "woman/girl/man/boy/baby",
-      "accessories": ["glasses", "sunglasses"] or []
-    }
-  ]
-}
-
-If no people are visible, respond with: {"people": []}
-
-ASSISTANT:"""
+        self.prompt = PROMPT
+        self.conversation = CONVERSATION
 
     def preprocess_image(self, image_path: str) -> Image.Image:
         """Load and preprocess the input image."""
@@ -65,13 +64,26 @@ ASSISTANT:"""
 
     def generate_analysis(self, image: Image.Image) -> str:
         """Generate analysis using LLaVA 1.5 model."""
-        # Prepare inputs for LLaVA 1.5
-        inputs = self.processor(
-            text=self.analysis_prompt,
-            images=image,
-            return_tensors="pt"
-        ).to(self.device)
+        # Update conversation with actual image
+        conversation = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": PROMPT.replace("USER: <image>", "").replace("A:", "").strip()},
+                ],
+            },
+        ]
         
+        inputs = self.processor.apply_chat_template(
+            conversation,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+            images=[image]  # Add the actual image
+        ).to(self.device)
+
         # Generate response
         with torch.no_grad():
             output = self.model.generate(
@@ -92,81 +104,54 @@ ASSISTANT:"""
         return assistant_response
 
     def parse_response(self, response: str) -> Dict:
-        """Parse the model response and return simple comma-separated format."""
+        """Parse the model response for list format like [woman], [man, sunglasses]."""
         try:
-            # Clean the response
             response = response.strip()
             
             # Check if no people detected
-            if response.lower() in ["none", "no people", "no one", ""]:
-                return {"result": "none", "people": []}
+            if response.lower() in ["[]", "none", "no people", "no one", ""]:
+                return {"result": "[]", "people": []}
             
-            # Parse comma-separated format
-            lines = [line.strip() for line in response.split('\n') if line.strip()]
+            # Find all list items like [woman] or [man, sunglasses]
+            list_pattern = r'\[([^\]]+)\]'
+            matches = re.findall(list_pattern, response)
+            
             people = []
+            result_lines = []
             
-            for i, line in enumerate(lines, 1):
-                if ',' in line:
-                    # Has accessories: "boy, glasses"
-                    parts = [part.strip() for part in line.split(',')]
-                    if len(parts) >= 2:
-                        category = parts[0]
-                        accessories = [acc.strip() for acc in parts[1:]]
-                        people.append({
-                            "person_id": i,
-                            "gender_age": category,
-                            "accessories": accessories
-                        })
-                else:
-                    # No accessories: "girl"
-                    category = line.strip()
+            for i, match in enumerate(matches, 1):
+                parts = [part.strip() for part in match.split(',')]
+                
+                if len(parts) >= 1:
+                    category = parts[0].strip()
+                    accessories = [acc.strip() for acc in parts[1:] if acc.strip()]
+                    
                     people.append({
                         "person_id": i,
                         "gender_age": category,
-                        "accessories": []
+                        "accessories": accessories
                     })
+                    
+                    # Format for simple result
+                    if accessories:
+                        result_lines.append(f"{category}, {', '.join(accessories)}")
+                    else:
+                        result_lines.append(category)
             
-            return {"result": response, "people": people}
+            # If no matches found, try fallback parsing
+            if not matches:
+                return self.fallback_parse(response)
+            
+            result_str = "\n".join(result_lines) if result_lines else "none"
+            return {"result": result_str, "people": people}
             
         except Exception as e:
             print(f"Parsing error: {e}")
-            return {"result": response, "people": []}
-
-    def get_simple_result(self, image_path: str) -> str:
-        """
-        Get simple comma-separated result format.
-        
-        Args:
-            image_path: Path to the input image
-            
-        Returns:
-            String in format: "boy, glasses" or "girl" or "none"
-        """
-        result = self.analyze_person(image_path)
-        
-        if result["status"] != "success":
-            return "error"
-        
-        return result["analysis"]["result"]
+            return self.fallback_parse(response)
 
     def fallback_parse(self, response: str) -> Dict:
-        """
-        Get simple comma-separated result format.
-        
-        Args:
-            image_path: Path to the input image
-            
-        Returns:
-            String in format: "boy, glasses" or "girl" or "none"
-        """
-        result = self.analyze_person(image_path)
-        
-        if result["status"] != "success":
-            return "error"
-        
-        return result["analysis"]["result"]
-        """Fallback parser for non-JSON responses."""
-        result = {"people": []}
+        """Fallback parser for non-standard responses."""
+        result = {"result": "none", "people": []}
         
         # Define valid categories
         gender_age_keywords = ["woman", "girl", "man", "boy", "baby"]
@@ -200,8 +185,31 @@ ASSISTANT:"""
                     "gender_age": found_gender,
                     "accessories": found_accessories
                 })
+                
+                # Format result string
+                if found_accessories:
+                    result["result"] = f"{found_gender}, {', '.join(found_accessories)}"
+                else:
+                    result["result"] = found_gender
         
         return result
+
+    def get_simple_result(self, image_path: str) -> str:
+        """
+        Get simple comma-separated result format.
+        
+        Args:
+            image_path: Path to the input image
+            
+        Returns:
+            String in format: "boy, glasses" or "girl" or "none"
+        """
+        result = self.analyze_person(image_path)
+        
+        if result["status"] != "success":
+            return "error"
+        
+        return result["analysis"]["result"]
 
     def analyze_person(self, image_path: str) -> Dict:
         """
@@ -241,38 +249,6 @@ ASSISTANT:"""
                 "analysis": {"result": "error", "people": []}
             }
 
-# Batch processing version
-class BatchPersonAnalysisPipeline(PersonAnalysisPipeline):
-    def analyze_batch(self, image_paths: List[str], max_batch_size: int = 4) -> List[Dict]:
-        """
-        Analyze multiple images in batch.
-        
-        Args:
-            image_paths: List of image paths
-            max_batch_size: Maximum number of images to process at once
-        """
-        results = []
-        
-        # Process in batches to manage memory
-        for i in range(0, len(image_paths), max_batch_size):
-            batch_paths = image_paths[i:i + max_batch_size]
-            
-            for image_path in batch_paths:
-                try:
-                    result = self.analyze_person(image_path)
-                    result["image_path"] = image_path
-                    results.append(result)
-                except Exception as e:
-                    results.append({
-                        "image_path": image_path,
-                        "status": "error",
-                        "model": "LLaVA-1.5",
-                        "error": str(e),
-                        "analysis": {"result": "error", "people": []}
-                    })
-        
-        return results
-
 # Utility functions for the pipeline
 def validate_result(result: Dict) -> bool:
     """Validate the analysis result structure."""
@@ -308,22 +284,11 @@ def format_results(result: Dict) -> str:
     if result["status"] != "success":
         return f"Error: {result.get('error', 'Unknown error')}"
     
-    people = result["analysis"]["people"]
-    
-    if not people:
-        return "No people detected in the image."
-    
-    output = []
-    for person in people:
-        accessories_str = ", ".join(person["accessories"]) if person["accessories"] else "None"
-        output.append(f"Person {person['person_id']}: {person['gender_age']}, Accessories: {accessories_str}")
-    
-    return "\n".join(output)
+    # Return the simple result format
+    return result["analysis"]["result"]
 
 # Example usage
 def main():
-    """Example usage of the LLaVA 1.5 person analysis pipeline."""
-    # Initialize the pipeline
     print("Initializing LLaVA 1.5 Person Analysis Pipeline...")
     pipeline = PersonAnalysisPipeline()
     
@@ -332,6 +297,12 @@ def main():
     
     try:
         print(f"Analyzing image: {image_path}")
+        
+        # Get simple result
+        simple_result = pipeline.get_simple_result(image_path)
+        print(f"\nSimple Result: {simple_result}")
+        
+        # Get full analysis
         result = pipeline.analyze_person(image_path)
         
         # Validate result
@@ -346,37 +317,22 @@ def main():
         print("="*50)
         print(format_results(result))
         
-        # Print raw JSON for debugging
+        # Print raw response for debugging
+        print(f"\nRaw model response: {result.get('raw_response', 'N/A')}")
+        
+        # Show expected format examples
         print("\n" + "="*50)
-        print("RAW JSON OUTPUT")
+        print("EXPECTED OUTPUT FORMATS")
         print("="*50)
-        print(json.dumps(result, indent=2))
+        print("Model should output:")
+        print("- [woman]")
+        print("- [man, sunglasses]")
+        print("- [boy, glasses]")
+        print("- []  (if no people)")
+        print(f"\nParsed to simple format: '{simple_result}'")
         
     except Exception as e:
         print(f"Error during analysis: {e}")
-
-# Testing function
-def test_pipeline():
-    """Test the pipeline with various scenarios."""
-    pipeline = PersonAnalysisPipeline()
-    
-    test_cases = [
-        "test_woman_with_glasses.jpg",
-        "test_man_with_sunglasses.jpg",
-        "test_child.jpg",
-        "test_baby.jpg",
-        "test_no_person.jpg"
-    ]
-    
-    for test_image in test_cases:
-        print(f"\nTesting: {test_image}")
-        try:
-            result = pipeline.analyze_person(test_image)
-            print(format_results(result))
-        except FileNotFoundError:
-            print(f"Test image {test_image} not found - skipping")
-        except Exception as e:
-            print(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
