@@ -6,19 +6,22 @@ from typing import List
 
 MODEL_ID = "llava-hf/llava-1.5-7b-hf"
 
-# 1) Keep PROMPT text *without* a literal "<image>" token  ★
 PROMPT_TEXT = (
-    "Please analyze this image and identify any people present. For each person you see, provide:\n\n"
-    "1. Gender/Age category: Choose from: woman, girl, man, boy, baby\n"
-    "2. Accessories: Identify if they are wearing: glasses, sunglasses, or none\n\n"
-    "Format your response strictly as a list for each person.\n"
-    "Examples: [man, sunglasses]\n"
-    "          [woman]\n"
-    "          [boy, glasses]\n"
-    "If no people are visible, respond with: []"
+    """
+    Please analyze this image and identify any people present. For each person you see, provide:
+    1. Gender/Age category: Choose from: woman, girl, man, boy, baby
+    2. Accessories: Identify if they are wearing: glasses, sunglasses, or none
+
+    Format your response strictly as a list for each person.
+    Examples: 
+    - [man, sunglasses]
+    - [woman]
+    - [boy, glasses]
+
+    If no people are visible, respond with: []
+    """
 )
 
-# 2) Use structured multimodal turns so the template inserts <image>  ★
 CONVERSATION = [
     {
         "role": "user",
@@ -50,20 +53,13 @@ class PersonAnalysisPipeline:
         return Image.open(path).convert("RGB")
 
     def build_inputs(self, image: Image.Image):
-        # 3) Build chat text only (no images here)  ★
         prompt_text = self.processor.apply_chat_template(
             CONVERSATION,
             add_generation_prompt=True,
-            tokenize=False,      # return a string that includes "<image>"
+            tokenize=False,     
         )
 
-        # (Optional) sanity check: ensure exactly one <image> token
         num_image_tokens = prompt_text.count(self.processor.tokenizer.special_tokens_map.get("image_token", "<image>"))
-        # You can print this while debugging:
-        # print("Template contains <image> tokens:", num_image_tokens)
-        # print("Prompt preview:\n", prompt_text)
-
-        # 4) Now pass both text and images to the processor  ★
         inputs = self.processor(
             text=prompt_text,
             images=image,
@@ -100,10 +96,15 @@ class PersonAnalysisPipeline:
                 elif p in ALLOWED_ACCESSORIES and accessory is None:
                     accessory = p
             if gender_age:
-                results.append([gender_age, accessory or "none"])
+
+                if accessory and accessory != "none":
+                    results.append([gender_age, accessory])
+                else:
+                    results.append([gender_age])
         if not results and "[]" in response.replace(" ", ""):
             return []
         return results
+
 
     def analyze_person(self, image_path: str) -> List[List[str]]:
         image = self.preprocess_image(image_path)
