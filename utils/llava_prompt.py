@@ -6,6 +6,7 @@ from typing import List
 
 MODEL_ID = "llava-hf/llava-1.5-7b-hf"
 
+
 PROMPT_TEXT = (
     """
     Please analyze this image and identify any people present. For each person you see, provide:
@@ -112,9 +113,9 @@ class PersonAnalysisPipeline:
         return self.parse_response(raw)
 
 def main():
-    print("Initializing LLaVA 1.5 Person Analysis Pipeline...")
+    print("Initializing Person Analysis Pipeline...")
     pipeline = PersonAnalysisPipeline()
-    image_path = "/data2/jeesoo/FFHQ/00000/00000.png"
+    image_path = "/data2/jeesoo/FFHQ/00000/00259.png"
     try:
         result = pipeline.analyze_person(image_path)
         print("Result:", result)
