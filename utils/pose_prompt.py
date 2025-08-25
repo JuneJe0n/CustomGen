@@ -1,3 +1,7 @@
+"""
+Category : pose
+Model : llava-hf/llava-1.5-7b-hf
+"""
 import torch
 from transformers import AutoProcessor, LlavaForConditionalGeneration
 from PIL import Image
@@ -9,17 +13,15 @@ MODEL_ID = "llava-hf/llava-1.5-7b-hf"
 
 PROMPT_TEXT = (
     """
-    Please analyze this image and identify any people present. For each person you see, provide:
-    1. Gender/Age category: Choose from: woman, girl, man, boy, baby
-    2. Accessories: Identify if they are wearing: glasses, sunglasses, or none
+    Please analyze this image and identify the person present. Assume there is only one person in the image. 
+    Provide a brief description of the pose of the person. Take carefull consider of the pose of the arms, legs and the overall body.
 
-    Format your response strictly as a list for each person.
-    Examples: 
-    - [man, sunglasses]
-    - [woman]
-    - [boy, glasses]
+    Format your response strictly as a single list.
+    Examples: 1
+    - [Sitting]
+    - [Standing, arms crossed]
 
-    If no people are visible, respond with: []
+    If no person is visible, respond with: []
     """
 )
 
@@ -33,8 +35,6 @@ CONVERSATION = [
     },
 ]
 
-ALLOWED_GENDER_AGE = {"woman", "girl", "man", "boy", "baby"}
-ALLOWED_ACCESSORIES = {"glasses", "sunglasses", "none"}
 
 class PersonAnalysisPipeline:
     def __init__(self):
@@ -82,32 +82,19 @@ class PersonAnalysisPipeline:
             text = text.split("ASSISTANT:", 1)[1].strip()
         return text
 
-    def parse_response(self, response: str) -> List[List[str]]:
+    def parse_response(self, response: str) -> List[str]:
         if response.strip() == "[]":
             return []
         matches = re.findall(r"\[([^\]]+)\]", response)
-        results: List[List[str]] = []
-        for m in matches:
-            parts = [p.strip().lower() for p in m.split(",") if p.strip()]
-            gender_age = None
-            accessory = None
-            for p in parts:
-                if p in ALLOWED_GENDER_AGE and gender_age is None:
-                    gender_age = p
-                elif p in ALLOWED_ACCESSORIES and accessory is None:
-                    accessory = p
-            if gender_age:
-
-                if accessory and accessory != "none":
-                    results.append([gender_age, accessory])
-                else:
-                    results.append([gender_age])
-        if not results and "[]" in response.replace(" ", ""):
+        if not matches:
             return []
-        return results
+        
+        # Take only the first match since we assume one person
+        parts = [p.strip() for p in matches[0].split(",") if p.strip()]
+        return parts
 
 
-    def analyze_person(self, image_path: str) -> List[List[str]]:
+    def analyze_person(self, image_path: str) -> List[str]:
         image = self.preprocess_image(image_path)
         raw = self.generate_analysis(image)
         return self.parse_response(raw)
@@ -115,7 +102,7 @@ class PersonAnalysisPipeline:
 def main():
     print("Initializing Person Analysis Pipeline...")
     pipeline = PersonAnalysisPipeline()
-    image_path = "/data2/jeesoo/FFHQ/00000/00259.png"
+    image_path = "/data2/jiyoon/custom/data/pose/p7.jpg"
     try:
         result = pipeline.analyze_person(image_path)
         print("Result:", result)
