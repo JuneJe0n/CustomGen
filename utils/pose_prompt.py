@@ -6,6 +6,9 @@ import torch
 from transformers import AutoProcessor, LlavaForConditionalGeneration
 from PIL import Image
 import re
+import csv
+import os
+import glob
 from typing import List
 
 MODEL_ID = "llava-hf/llava-1.5-7b-hf"
@@ -13,15 +16,12 @@ MODEL_ID = "llava-hf/llava-1.5-7b-hf"
 
 PROMPT_TEXT = (
     """
-    Please analyze this image and identify the person present. Assume there is only one person in the image. 
-    Provide a brief description of the pose of the person. Take carefull consider of the pose of the arms, legs and the overall body.
+    Please analyze the person in the picture. Provide a brief description of the pose of the person. Take carefull consider of the pose of the arms, legs and the overall body.
 
     Format your response strictly as a single list.
     Examples: 1
     - [Sitting]
     - [Standing, arms crossed]
-
-    If no person is visible, respond with: []
     """
 )
 
@@ -98,14 +98,46 @@ class PersonAnalysisPipeline:
         image = self.preprocess_image(image_path)
         raw = self.generate_analysis(image)
         return self.parse_response(raw)
+    
+    def process_folder(self, folder_path: str, output_csv: str = "pose_results.csv"):
+        image_extensions = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tiff', '*.webp']
+        image_files = []
+        
+        for ext in image_extensions:
+            image_files.extend(glob.glob(os.path.join(folder_path, ext)))
+            image_files.extend(glob.glob(os.path.join(folder_path, ext.upper())))
+        
+        if not image_files:
+            print(f"No image files found in {folder_path}")
+            return
+        
+        print(f"Found {len(image_files)} images to process...")
+        
+        with open(output_csv, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['filename', 'response'])
+            
+            for i, image_path in enumerate(image_files, 1):
+                filename = os.path.basename(image_path)
+                print(f"Processing {i}/{len(image_files)}: {filename}")
+                
+                try:
+                    result = self.analyze_person(image_path)
+                    response = str(result) if result else "[]"
+                    writer.writerow([filename, response])
+                except Exception as e:
+                    print(f"Error processing {filename}: {e}")
+                    writer.writerow([filename, f"Error: {str(e)}"])
+        
+        print(f"Results saved to {output_csv}")
 
 def main():
     print("Initializing Person Analysis Pipeline...")
     pipeline = PersonAnalysisPipeline()
-    image_path = "/data2/jiyoon/custom/data/pose/p7.jpg"
+    folder_path = "/data2/jiyoon/custom/data/pose"
+    output_csv = "/data2/jiyoon/custom/results/prompt/jiyoon/pose.csv"
     try:
-        result = pipeline.analyze_person(image_path)
-        print("Result:", result)
+        pipeline.process_folder(folder_path, output_csv)
     except Exception as e:
         print(f"🚨 Error during analysis: {e}")
 

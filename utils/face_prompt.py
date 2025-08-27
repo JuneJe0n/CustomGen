@@ -6,6 +6,8 @@ import torch
 from transformers import AutoProcessor, LlavaForConditionalGeneration
 from PIL import Image
 import re
+import os
+import csv
 from typing import List
 
 MODEL_ID = "llava-hf/llava-1.5-7b-hf"
@@ -13,17 +15,17 @@ MODEL_ID = "llava-hf/llava-1.5-7b-hf"
 
 PROMPT_TEXT = (
     """
-    Please analyze this image and identify the person present. Assume there is only one person in the image. Provide:
-    1. Gender/Age category: Choose from: woman, girl, man, boy, baby
-    2. Accessories: Identify if they are wearing: glasses, sunglasses, or none
+    Please analyze the person in the picture. Provide:
+    1. Gender/Age category: Identify it the person is a woman, girl, man, boy, or baby. Return at least one.
+    2. Attributes: Identify if they are wearing or have any of glasses, sunglasses, beard, or none. Return at least one (none counts as an option).
+    Do not return an empty list. You must return at least one from each option.
 
     Format your response strictly as a single list.
     Examples: 
     - [man, sunglasses]
     - [woman]
     - [boy, glasses]
-
-    If no person is visible, respond with: []
+    - [man, beard]
     """
 )
 
@@ -118,12 +120,42 @@ class PersonAnalysisPipeline:
 def main():
     print("Initializing Person Analysis Pipeline...")
     pipeline = PersonAnalysisPipeline()
-    image_path = "/data2/jeesoo/FFHQ/00000/00259.png"
-    try:
-        result = pipeline.analyze_person(image_path)
-        print("Result:", result)
-    except Exception as e:
-        print(f"🚨 Error during analysis: {e}")
+    folder_path = "/data2/jeesoo/FFHQ/00000"
+    csv_output_path = "/data2/jiyoon/custom/results/prompt/face.csv"
+    
+    # Get all image files in the folder
+    supported_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff'}
+    image_files = [f for f in os.listdir(folder_path) 
+                   if os.path.splitext(f)[1].lower() in supported_extensions]
+    
+    if not image_files:
+        print("No image files found in the folder.")
+        return
+    
+    print(f"Found {len(image_files)} image files. Processing...")
+    
+    # Prepare CSV output
+    results = []
+    
+    for image_file in sorted(image_files):
+        image_path = os.path.join(folder_path, image_file)
+        try:
+            result = pipeline.analyze_person(image_path)
+            prompt = ", ".join(result) if result else ""
+            results.append({"image_file": image_file, "generated_prompt": prompt})
+            print(f"{image_file}: {result}")
+        except Exception as e:
+            print(f"🚨 Error analyzing {image_file}: {e}")
+            results.append({"image_file": image_file, "generated_prompt": "ERROR"})
+    
+    # Save results to CSV
+    with open(csv_output_path, 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = ['image_file', 'generated_prompt']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(results)
+    
+    print(f"\nResults saved to {csv_output_path}")
 
 if __name__ == "__main__":
     main()
