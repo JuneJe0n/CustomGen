@@ -21,11 +21,11 @@ from skimage.transform import SimilarityTransform, warp
 import mediapipe as mp
 
 # ─────────────────── Settings ───────────────────
-PROMPT = "a baby sitting,glasses, clear facial features, detailed, realistic, smooth colors"
+PROMPT = "a baby sitting,clear facial features, detailed, realistic, smooth colors"
 NEG = "(lowres, bad quality, watermark, disjointed, strange limbs, cut off, bad anatomymissing limbs, fused fingers)"
 FACE_IMG  = Path("/data2/jeesoo/FFHQ/00000/00000.png")
-POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p7.jpg")
-STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s4.png")
+POSE_IMG  = Path("//data2/jiyoon/custom/data/pose/p2.jpeg")
+STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s5.jpg")
 
 CN_HED     = "/data2/jiyoon/custom/ckpts/controlnet-union-sdxl-1.0"
 CN_POSE    = "/data2/jiyoon/custom/ckpts/controlnet-openpose-sdxl-1.0"
@@ -38,7 +38,7 @@ COND_POSE    = 0.6
 STYLE_SCALE  = 0.8
 CFG, STEPS   = 7.0, 50
 SEED         = 42
-OUTDIR       = Path("/data2/jiyoon/custom/results/face_kps/00000/s4/p7")
+OUTDIR       = Path("/data2/jiyoon/custom/results/face_kps/00000/s5/hed")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # ─────────────────── Globals ───────────────────
@@ -202,7 +202,7 @@ def main(use_style, gpu_idx, low_memory=False):
 
     # 2) Face HED from aligned face crop
     hed = HEDdetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
-    face_hed = hed(face_crop, safe=False, scribble=False)
+    face_hed = hed(face_crop, safe=True, scribble=False)
     face_hed.save(OUTDIR/"04_face_hed_raw.png")
     del hed; torch.cuda.empty_cache()
 

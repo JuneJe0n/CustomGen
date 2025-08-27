@@ -13,34 +13,52 @@ from typing import List
 MODEL_ID = "llava-hf/llava-1.5-7b-hf"
 
 
-PROMPT_TEXT = (
-    """
-    Please analyze the person in the picture. Provide:
-    1. Gender/Age category: Identify it the person is a woman, girl, man, boy, or baby. Return at least one.
-    2. Attributes: Identify if they are wearing or have any of glasses, sunglasses, beard, or none. Return at least one (none counts as an option).
-    Do not return an empty list. You must return at least one from each option.
+PROMPT_JUNE = """
+You are a strict classifier. Classify the person in the picture on two properties :
+1. Gender/Age (required): Classify if the person is [woman/girl/man/boy/baby]
+2. Attribute : Classify if the person has [glasses/sunglasses/beard]. If none, output only the Gender/Age property.
 
-    Format your response strictly as a single list.
-    Examples: 
-    - [man, sunglasses]
-    - [woman]
-    - [boy, glasses]
-    - [man, beard]
-    """
-)
+Output Rules:
+- Format your respose stricly as a single list 
+- Do not add extra words, explanations, or categories.
+
+Examples:
+- [man]
+- [woman]
+- [boy, glasses]
+- [man, beard]
+"""
+
+
+PROMPT_JEESOO = """
+You are a strict classifier. For the given face image, output EXACTLY one lowercase line with 1 or 2 items, separated by a comma and a single space (", ").
+
+- First item (required): one of {baby,boy,girl,man,woman}.
+- Second item (optional): one of {sunglasses,glasses,beard}. If none, output only the first item.
+- If multiple accessories are present, pick ONE using this priority: sunglasses > glasses > beard.
+
+Hard rules:
+- Output ONLY that line; no explanations, no extra words, no quotes, no trailing period.
+- Do NOT output more than 2 items.
+- Your entire output MUST match this regex:
+^(baby|boy|girl|man|woman)(, (sunglasses|glasses|beard))?$
+
+Examples:
+baby
+man, beard
+woman, sunglasses
+"""
+
 
 CONVERSATION = [
     {
         "role": "user",
         "content": [
             {"type": "image"},
-            {"type": "text", "text": PROMPT_TEXT},
+            {"type": "text", "text": PROMPT_JUNE},
         ],
     },
 ]
-
-ALLOWED_GENDER_AGE = {"woman", "girl", "man", "boy", "baby"}
-ALLOWED_ACCESSORIES = {"glasses", "sunglasses", "none"}
 
 class PersonAnalysisPipeline:
     def __init__(self):
@@ -88,40 +106,11 @@ class PersonAnalysisPipeline:
             text = text.split("ASSISTANT:", 1)[1].strip()
         return text
 
-    def parse_response(self, response: str) -> List[str]:
-        if response.strip() == "[]":
-            return []
-        matches = re.findall(r"\[([^\]]+)\]", response)
-        if not matches:
-            return []
-        
-        parts = [p.strip().lower() for p in matches[0].split(",") if p.strip()]
-        gender_age = None
-        accessory = None
-        for p in parts:
-            if p in ALLOWED_GENDER_AGE and gender_age is None:
-                gender_age = p
-            elif p in ALLOWED_ACCESSORIES and accessory is None:
-                accessory = p
-        
-        if gender_age:
-            if accessory and accessory != "none":
-                return [gender_age, accessory]
-            else:
-                return [gender_age]
-        return []
-
-
-    def analyze_person(self, image_path: str) -> List[str]:
-        image = self.preprocess_image(image_path)
-        raw = self.generate_analysis(image)
-        return self.parse_response(raw)
-
 def main():
     print("Initializing Person Analysis Pipeline...")
     pipeline = PersonAnalysisPipeline()
     folder_path = "/data2/jeesoo/FFHQ/00000"
-    csv_output_path = "/data2/jiyoon/custom/results/prompt/face.csv"
+    csv_output_path = "/data2/jiyoon/custom/results/prompt/jiyoon_v1/face.csv"
     
     # Get all image files in the folder
     supported_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff'}
@@ -140,10 +129,10 @@ def main():
     for image_file in sorted(image_files):
         image_path = os.path.join(folder_path, image_file)
         try:
-            result = pipeline.analyze_person(image_path)
-            prompt = ", ".join(result) if result else ""
-            results.append({"image_file": image_file, "generated_prompt": prompt})
-            print(f"{image_file}: {result}")
+            image = pipeline.preprocess_image(image_path)
+            raw_response = pipeline.generate_analysis(image)
+            results.append({"image_file": image_file, "generated_prompt": raw_response})
+            print(f"{image_file}: {raw_response}")
         except Exception as e:
             print(f"🚨 Error analyzing {image_file}: {e}")
             results.append({"image_file": image_file, "generated_prompt": "ERROR"})
