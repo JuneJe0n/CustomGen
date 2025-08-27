@@ -138,6 +138,7 @@ def main():
             results.append({"image_file": image_file, "generated_prompt": "ERROR"})
     
     # Save results to CSV
+    os.makedirs(os.path.dirname(csv_output_path), exist_ok=True)
     with open(csv_output_path, 'w', newline='', encoding='utf-8') as csvfile:
         fieldnames = ['image_file', 'generated_prompt']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
