@@ -80,7 +80,7 @@ def create_mediapipe_face_mask(img):
 
             # mask
             mask = cv2.GaussianBlur(mask, (21,21), 7)
-            Image.fromarray((mask*255).astype(np.uint8)).save(OUTDIR/"03_mediapipe_mask.png")
+            Image.fromarray((mask*255).astype(np.uint8)).save(OUTDIR/"5_mediapipe_mask.png")
             return mask[...,None]
     return None
 
@@ -127,7 +127,7 @@ def blend_face_hed_face_only(face_hed, pose_img, face_mask, bbox):
         canvas *= face_mask 
 
     result = Image.fromarray(np.clip(canvas,0,255).astype(np.uint8)).convert("RGB")
-    result.save(OUTDIR/"5_hed_resized.png")
+    result.save(OUTDIR/"6_hed_resized.png")
     return result
 
 

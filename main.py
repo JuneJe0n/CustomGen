@@ -79,8 +79,8 @@ def main(gpu_idx, low_memory=False):
     openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
     pose_kps = extract_pose_keypoints(
         composite, openpose,
-        include_body=True, include_hand=True, include_face=False,  
-        save_name="6_kps.png"
+        include_body=True, include_hand=True, include_face=True,  
+        save_name="7_kps.png"
     )
     del openpose; torch.cuda.empty_cache()
 
@@ -128,7 +128,7 @@ def main(gpu_idx, low_memory=False):
     )[0]
     del ip
     
-    out.save(OUTDIR/"7_final_result.png")
+    out.save(OUTDIR/"8_final_result.png")
     print(f"✅ Saved all intermediates in {OUTDIR}")
 
 # ─────────────────── CLI ───────────────────
