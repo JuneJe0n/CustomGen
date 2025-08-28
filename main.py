@@ -5,9 +5,6 @@ Pose : openpose kps
 
 Example Command
 python main.py --gpu 5 --low-memory
-
-conda env
-instantstlye
 """
 import argparse
 import cv2
@@ -20,11 +17,6 @@ from insightface.app import FaceAnalysis
 from ip_adapter import IPAdapterXL
 
 from utils import *
-
-
-# (load_rgb, to_sdxl_res, expand_bbox, extract_pose_keypoints,
-# align_face_with_landmarks, create_mediapipe_face_mask, create_enhanced_soft_mask,
-# blend_face_hed_face_only, paste_face_into_pose)
 from config import *
 
 # --- Main ---
@@ -86,7 +78,7 @@ def main(gpu_idx, low_memory=False):
 
     # ControlNet setup
     controlnets = [
-        ControlNetModel.from_pretrained(CN_POSE, torch_dtype=DTYPE),
+        ControlNetModel.from_pretrained(CN_POSE, torch_dtype=DTYPE, use_safetensors=False),
         ControlNetModel.from_pretrained(CN_HED,  torch_dtype=DTYPE),
     ]
     images = [pose_kps, hed_face_only]
@@ -99,9 +91,9 @@ def main(gpu_idx, low_memory=False):
         add_watermarker=False
     ).to(DEVICE)
 
-    pipe.enable_vae_tiling()
+    # pipe.enable_vae_tiling()  # Can cause blocky artifacts
     pipe.enable_xformers_memory_efficient_attention()
-    pipe.enable_attention_slicing(1)
+    # pipe.enable_attention_slicing(1)  # Can degrade quality
     pipe.enable_model_cpu_offload()
 
     args = dict(
@@ -131,7 +123,8 @@ def main(gpu_idx, low_memory=False):
     out.save(OUTDIR/"8_final_result.png")
     print(f"✅ Saved all intermediates in {OUTDIR}")
 
-# ─────────────────── CLI ───────────────────
+
+# --- CLI ---
 if __name__=="__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--gpu", type=int, default=0)

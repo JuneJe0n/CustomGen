@@ -65,7 +65,7 @@ def create_mediapipe_face_mask(img):
     with mp_face_mesh.FaceMesh(
             static_image_mode=True, 
             max_num_faces=1, 
-            refine_landmarks=True,
+            refine_landmarks=False,
             min_detection_confidence=0.3
             ) as fm:
         results = fm.process(img_rgb)
