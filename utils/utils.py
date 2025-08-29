@@ -152,8 +152,7 @@ def paste_face_into_pose(pose_img: Image.Image, aligned_face: Image.Image, mask:
 
 
 # --- Extract kps ---
-
-def extract_pose_keypoints(img, pose_detector, include_body=True, include_hand=True, include_face=False, save_name="01_pose_kps_body_hands_only.png"):
+def extract_pose_keypoints(img, pose_detector, include_body=True, include_hand=True, include_face=False, save_name="kps.png"):
     """
     Default include_face=False (i.e., remove facial kps).
     """

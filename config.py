@@ -1,14 +1,14 @@
 from pathlib import Path
 
 # prompts
-PROMPT = "The upper body of a boy, hands on hips, clear facial features, smooth colors"
+PROMPT = "Woman, clear facial features, smooth colors"
 NEG = "(lowres, bad quality, watermark,strange limbs)"
 
 # img paths
-FACE_IMG  = Path("/data2/jeesoo/FFHQ/00000/00086.png")
-POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/p10.png")
-STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s3.png")
-OUTDIR    = Path("/home/jiyoon")
+FACE_IMG  = Path("/data2/jeesoo/FFHQ/00000/00020.png")
+POSE_IMG  = Path("/data2/jeesoo/custom_gen_js/pose_data/adult2.jpg")
+STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s4.png")
+OUTDIR    = Path("/home/jiyoon/adult2")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # model paths
@@ -20,7 +20,7 @@ STYLE_IP   = "/data2/jiyoon/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin"
 
 # params
 COND_HED     = 0.8
-COND_POSE    = 0.6
+COND_POSE    = 0.85
 STYLE_SCALE  = 0.8
 CFG, STEPS   = 7.0, 50
 SEED         = 42
