@@ -47,8 +47,6 @@ def main(gpu_idx: int):
     fx1, fy1, fx2, fy2 = map(int, f_info['bbox'])
     fw, fh = fx2 - fx1, fy2 - fy1
     face_crop_pil = face_im.crop((fx1, fy1, fx2, fy2))
-    face_crop_pil.save(OUTDIR/"3_face_crop.png")
-
 
     # Face bbox from pose img
     pose_cv = cv2.cvtColor(np.array(pose_im), cv2.COLOR_RGB2BGR)
@@ -70,26 +68,20 @@ def main(gpu_idx: int):
     # Resize HED 
     hed = HEDdetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
     face_hed_crop_pil = hed(face_crop_pil, safe=False, scribble=False)
-    face_hed_crop_pil.save(OUTDIR/"4_face_hed_crop.png")
     face_hed_resized  = face_hed_crop_pil.resize((new_w, new_h), Image.LANCZOS)
-    face_hed_resized.save(OUTDIR/"5_face_hed_resized.png")
     face_hed_np       = np.array(face_hed_resized).astype(np.float32)
 
 
     # Create face mask using FaceMesh polygon
     poly_pts_scaled, poly_mask, poly_mask_3c = create_face_mask(face_crop_pil, fw, fh, scale, new_h, new_w)
-    to_mask_image(poly_mask).save(OUTDIR/"6_poly_mask.png")
-    Image.fromarray((poly_mask_3c*255).astype(np.uint8)).save(OUTDIR/"7_poly_mask_3c.png")
 
     # Apply face mask on HED
     face_hed_np_masked = (face_hed_np * poly_mask_3c).astype(np.float32)
-    Image.fromarray(face_hed_np_masked.clip(0,255).astype(np.uint8)).save(OUTDIR/"8_face_hed_masked.png")
-
-
+   
     # Openpose
     openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
     pose_openpose_pil = openpose(pose_im, hand_and_face=True).resize((W, H), Image.LANCZOS)
-    pose_openpose_pil.save(OUTDIR / "9_pose_kps.png")
+    pose_openpose_pil.save(OUTDIR / "3_pose_kps.png")
     pose_openpose_np  = np.array(pose_openpose_pil).astype(np.float32) # openpose skeleton img
 
     
@@ -99,16 +91,16 @@ def main(gpu_idx: int):
     start_x, start_y = cx - new_w//2, cy - new_h//2
     face_hed_canvas_np[start_y:start_y+new_h, start_x:start_x+new_w] = face_hed_np_masked
     face_hed_canvas_pil = Image.fromarray(face_hed_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
-    face_hed_canvas_pil.save(OUTDIR / "10_hed_aligned.png")
+    face_hed_canvas_pil.save(OUTDIR / "4_hed_aligned.png")
  
 
     # Body mask (Inverse of face mask)
     face_mask_full = np.zeros((H, W), dtype=np.float32)
     cv2.fillPoly(face_mask_full, [poly_pts_scaled + [start_x, start_y]], 1.0)
     face_mask_full = cv2.GaussianBlur(face_mask_full, (31,31), sigmaX=10, sigmaY=10)
-    to_mask_image(face_mask_full).save(OUTDIR/"11_face_mask_full.png")
+    to_mask_image(face_mask_full).save(OUTDIR/"5_face_mask_full.png")
     body_mask = (1.0 - face_mask_full).astype(np.float32)
-    to_mask_image(body_mask).save(OUTDIR/"12_body_mask.png")
+    to_mask_image(body_mask).save(OUTDIR/"6_body_mask.png")
 
 
     # ControlNet setup
@@ -161,7 +153,7 @@ def main(gpu_idx: int):
     )[0]
     del ip
     
-    out.save(OUTDIR/"13_final_result.png")
+    out.save(OUTDIR/"7_final_result.png")
     print(f"✅ Saved all intermediates in {OUTDIR}")
 
 
