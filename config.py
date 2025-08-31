@@ -1,14 +1,14 @@
 from pathlib import Path
 
 # prompts
-PROMPT = "Woman, clear facial features, smooth colors"
+PROMPT = "baby, lying down, arms resting on the bed, clear facial features, smooth colors"
 NEG = "(lowres, bad quality, watermark,strange limbs)"
 
 # img paths
 FACE_IMG  = Path("/data2/jeesoo/FFHQ/00000/00020.png")
-POSE_IMG  = Path("/data2/jeesoo/custom_gen_js/pose_data/adult2.jpg")
+POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/baby/b_6.jpg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s4.png")
-OUTDIR    = Path("/home/jiyoon/adult2")
+OUTDIR    = Path("/data2/jiyoon/custom/results/method5/baby/b_6")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # model paths
