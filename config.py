@@ -1,8 +1,5 @@
 from pathlib import Path
-
-# prompts
-PROMPT = "baby, lying down, arms resting on the bed, clear facial features, smooth colors"
-NEG = "(lowres, bad quality, watermark,strange limbs)"
+from utils import PromptGenerator
 
 # img paths
 FACE_IMG  = Path("/data2/jeesoo/FFHQ/00000/00020.png")
@@ -10,6 +7,11 @@ POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/baby/b_6.jpg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s4.png")
 OUTDIR    = Path("/data2/jiyoon/custom/results/method5/baby/b_6")
 OUTDIR.mkdir(parents=True, exist_ok=True)
+
+# prompts
+generator = PromptGenerator()
+PROMPT = generator.generate_combined_prompt(FACE_IMG, POSE_IMG)
+NEG = "(lowres, bad quality, watermark,strange limbs)"
 
 # model paths
 CN_HED     = "/data2/jiyoon/custom/ckpts/controlnet-union-sdxl-1.0"

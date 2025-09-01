@@ -4,7 +4,6 @@ import mediapipe as mp
 from PIL import Image
 from skimage.transform import SimilarityTransform, warp
 
-from config import OUTDIR
 
 # === Global utils ===
 # --- Load ---
@@ -92,7 +91,7 @@ def align_face_with_landmarks(face_img, pose_img, face_det):
         h, w = pose_img.size[::-1]
         aligned_face = warp(np.array(face_img), tform.inverse, output_shape=(h, w), preserve_range=True)
         aligned_face_pil = Image.fromarray(aligned_face.astype(np.uint8))
-        aligned_face_pil.save(OUTDIR/"3_aligned_face.png")
+        # aligned_face_pil.save(outdir/"3_aligned_face.png")  # Debug save removed
 
         pose_bbox_expanded = expand_bbox(pose_info['bbox'], scale=1.35, W=w, H=h)
         return aligned_face_pil, pose_bbox_expanded
@@ -123,7 +122,7 @@ def create_mediapipe_face_mask(img):
 
             # mask
             mask = cv2.GaussianBlur(mask, (21,21), 7)
-            Image.fromarray((mask*255).astype(np.uint8)).save(OUTDIR/"5_mediapipe_mask.png")
+            # Image.fromarray((mask*255).astype(np.uint8)).save(outdir/"5_mediapipe_mask.png")  # Debug save removed
             return mask[...,None]
     return None
 
@@ -142,7 +141,7 @@ def create_enhanced_soft_mask(pose_img, bbox):
         mask = np.zeros((h,w),dtype=np.float32)
         mask[y1:y2,x1:x2]=1.0
         mask = cv2.GaussianBlur(mask,(51,51),15)
-        Image.fromarray((mask*255).astype(np.uint8)).save(OUTDIR/"bbox_mask.png")
+        # Image.fromarray((mask*255).astype(np.uint8)).save(outdir/"bbox_mask.png")  # Debug save removed
         return mask[...,None]
 
 
@@ -170,7 +169,7 @@ def blend_face_hed_face_only(face_hed, pose_img, face_mask, bbox):
         canvas *= face_mask 
 
     result = Image.fromarray(np.clip(canvas,0,255).astype(np.uint8)).convert("RGB")
-    result.save(OUTDIR/"6_hed_resized.png")
+    # result.save(outdir/"6_hed_resized.png")  # Debug save removed
     return result
 
 
@@ -190,7 +189,7 @@ def paste_face_into_pose(pose_img: Image.Image, aligned_face: Image.Image, mask:
     out = pose_np.copy()
     out[y1:y2, x1:x2] = m[y1:y2, x1:x2]*face_np + (1.0 - m[y1:y2, x1:x2])*pose_np[y1:y2, x1:x2]
     comp = Image.fromarray(np.clip(out,0,255).astype(np.uint8))
-    comp.save(OUTDIR/"5_composite_canvas.png")
+    # comp.save(outdir/"5_composite_canvas.png")  # Debug save removed
     return comp
 
 
@@ -206,7 +205,7 @@ def extract_pose_keypoints(img, pose_detector, include_body=True, include_hand=T
         include_face=include_face
     )
     kps = kps.resize(img.size, Image.LANCZOS)
-    kps.save(OUTDIR / save_name)
+    # kps.save(outdir / save_name)  # Debug save removed
     return kps
 
 
