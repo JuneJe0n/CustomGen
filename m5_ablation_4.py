@@ -1,5 +1,5 @@
 """
-Inference codes for method 5 - (4) Abaltion with facial kps
+Inference codes for method 5 - (4) Ablation with facial kps
 """
 import argparse, cv2, torch, numpy as np
 from pathlib import Path
