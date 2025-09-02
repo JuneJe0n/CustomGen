@@ -3,9 +3,9 @@ from utils import PromptGenerator
 
 # img paths
 FACE_IMG  = Path("/data2/jiyoon/custom/data/ablation/face/baby/00000.png")
-POSE_IMG  = Path("/data2/jiyoon/custom/data/ablation/pose/baby/b_0.jpeg")
-STYLE_IMG = Path("/data2/jiyoon/custom/data/ablation/style/wikiart_035.jpg")
-OUTDIR    = Path("/data2/jiyoon/custom/results/method5_ablation/ablation_5/00000_b_0_wikiart_035")
+POSE_IMG  = Path("/data2/jiyoon/custom/data/ablation/pose/baby/b_2.jpg")
+STYLE_IMG = Path("/data2/jiyoon/custom/data/ablation/style/s12.jpg")
+OUTDIR    = Path("/data2/jiyoon/custom/results/method5_ablation/ablation_5/00000_b_2_s12")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # prompts
