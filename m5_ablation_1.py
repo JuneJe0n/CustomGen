@@ -1,5 +1,5 @@
 """
-Inference codes for method 5
+Inference codes for method 5 - (1) Ablation without face mask
 """
 import argparse, cv2, torch, numpy as np
 from pathlib import Path

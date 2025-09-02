@@ -8,12 +8,7 @@ from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
 from diffusers.models.controlnets.multicontrolnet import MultiControlNetModel
 from controlnet_aux import OpenposeDetector, HEDdetector
 from insightface.app import FaceAnalysis
-
-
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from ip_adapter.ip_adapter import IPAdapterXL
+from ip_adapter import IPAdapterXL
 import mediapipe as mp
 
 from config import *
@@ -81,7 +76,8 @@ def main(gpu_idx: int):
     poly_pts_scaled, poly_mask, poly_mask_3c = create_face_mask(face_crop_pil, fw, fh, scale, new_h, new_w)
 
     # Apply face mask on HED
-    face_hed_np_masked = (face_hed_np * poly_mask_3c).astype(np.float32)
+    # face_hed_np_masked = (face_hed_np * poly_mask_3c).astype(np.float32)
+    face_hed_np_masked = face_hed_np.astype(np.float32)
    
     # Openpose
     openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
@@ -109,7 +105,6 @@ def main(gpu_idx: int):
 
 
     # ControlNet setup
-
     controlnets = [
         ControlNetModel.from_pretrained(CN_POSE, torch_dtype=DTYPE, use_safetensors=False),
         ControlNetModel.from_pretrained(CN_HED, torch_dtype=DTYPE)
@@ -139,6 +134,7 @@ def main(gpu_idx: int):
         guidance_scale=CFG,
         image=images,
         controlnet_conditioning_scale=scales,
+        control_mask=masks,
         generator=torch.Generator(device=DEVICE).manual_seed(SEED),
     )
 

@@ -1,5 +1,5 @@
 """
-Inference codes for method 5
+Inference codes for method 5 - (2) Ablation without body mask
 """
 import argparse, cv2, torch, numpy as np
 from pathlib import Path
@@ -92,26 +92,22 @@ def main(gpu_idx: int):
     face_hed_canvas_np[start_y:start_y+new_h, start_x:start_x+new_w] = face_hed_np_masked
     face_hed_canvas_pil = Image.fromarray(face_hed_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
     face_hed_canvas_pil.save(OUTDIR / "4_hed_aligned.png")
- 
 
-    # Body mask (Inverse of face mask)
+    # Face mask for reference (still create for debugging)
     face_mask_full = np.zeros((H, W), dtype=np.float32)
     cv2.fillPoly(face_mask_full, [poly_pts_scaled + [start_x, start_y]], 1.0)
     face_mask_full = cv2.GaussianBlur(face_mask_full, (31,31), sigmaX=10, sigmaY=10)
     to_mask_image(face_mask_full).save(OUTDIR/"5_face_mask_full.png")
-    body_mask = (1.0 - face_mask_full).astype(np.float32)
-    to_mask_image(body_mask).save(OUTDIR/"6_body_mask.png")
 
-
-    # ControlNet setup
+    # ControlNet setup - NO BODY MASK, keep face mask
     controlnets = [
         ControlNetModel.from_pretrained(CN_POSE, torch_dtype=DTYPE, use_safetensors=False),
         ControlNetModel.from_pretrained(CN_HED, torch_dtype=DTYPE)
     ]
 
-    images = [pose_openpose_pil,face_hed_canvas_pil]
+    images = [pose_openpose_pil, face_hed_canvas_pil]
     scales = [COND_POSE, COND_HED]
-    masks = [to_mask_image(body_mask),to_mask_image(face_mask_full)]
+    masks = [None, to_mask_image(face_mask_full)]
 
 
     pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
@@ -151,7 +147,7 @@ def main(gpu_idx: int):
     )[0]
     del ip
     
-    out.save(OUTDIR/"7_final_result.png")
+    out.save(OUTDIR/"7_final_result_no_body.png")
     print(f"✅ Saved all intermediates in {OUTDIR}")
 
 
