@@ -2,10 +2,10 @@ from pathlib import Path
 from utils import PromptGenerator
 
 # img paths
-FACE_IMG  = Path("/data2/jeesoo/FFHQ/00000/00020.png")
-POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/baby/b_6.jpg")
+FACE_IMG  = Path("/data2/jeesoo/FFHQ/00000/00062.png")
+POSE_IMG  = Path("/data2/jiyoon/custom/data/pose/adult_upper/au_16.jpg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/style/s4.png")
-OUTDIR    = Path("/data2/jiyoon/custom/results/method5/baby/b_6")
+OUTDIR    = Path("/data2/jiyoon/custom/results/method5_ablation/no_face")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # prompts
