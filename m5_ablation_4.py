@@ -1,5 +1,5 @@
 """
-Inference codes for method 5
+Inference codes for method 5 - (4) Abaltion with facial kps
 """
 import argparse, cv2, torch, numpy as np
 from pathlib import Path
@@ -161,7 +161,7 @@ def main(gpu_idx: int):
 
     images = [pose_openpose_pil,face_hed_canvas_pil]
     scales = [COND_POSE, COND_HED]
-    masks = [to_mask_image(body_mask),to_mask_image(face_mask_full)]
+    masks = [None,to_mask_image(face_mask_full)]
 
 
     pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
