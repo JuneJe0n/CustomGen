@@ -125,7 +125,7 @@ SEED         = 42
 EOF
                         
                         # Run the script
-                        if python m5_ablation_5.py --gpu "$GPU_ID"; then
+                        if python m5_ablation_4.py --gpu "$GPU_ID"; then
                             echo "✅ Completed: $outdir_name"
                         else
                             echo "❌ Failed: $outdir_name"
