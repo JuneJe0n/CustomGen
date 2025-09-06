@@ -1,5 +1,5 @@
 """
-Inference codes for method 5 - (1) Ablation without face mask
+8. ours (face mesh HED + face kps + pose kps)
 """
 import argparse, cv2, torch, numpy as np
 from pathlib import Path
@@ -30,6 +30,9 @@ def main(gpu_idx: int):
     style_pil.save(OUTDIR/"2_style_input.png")
     W, H = pose_im.size
 
+
+
+    # -- bbox ---
     # Face detector
     face_det = FaceAnalysis(
         name="antelopev2",
@@ -60,6 +63,8 @@ def main(gpu_idx: int):
     pw, ph = x2 - x1, y2 - y1
 
 
+
+    # --- Resize ---
     # Compute scale factor
     scale_w, scale_h = pw / fw, ph / fh
     scale = min(scale_w, scale_h)
@@ -71,39 +76,84 @@ def main(gpu_idx: int):
     face_hed_resized  = face_hed_crop_pil.resize((new_w, new_h), Image.LANCZOS)
     face_hed_np       = np.array(face_hed_resized).astype(np.float32)
 
+    # Resize face crop
+    face_crop_pil_resized = face_crop_pil.resize((new_w, new_h), Image.LANCZOS)
+    face_crop_np = np.array(face_crop_pil_resized).astype(np.float32)
 
+
+
+    # --- Mask ---
     # Create face mask using FaceMesh polygon
     poly_pts_scaled, poly_mask, poly_mask_3c = create_face_mask(face_crop_pil, fw, fh, scale, new_h, new_w)
 
     # Apply face mask on HED
     face_hed_np_masked = (face_hed_np * poly_mask_3c).astype(np.float32)
-   
-    # Openpose
-    openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
-    pose_openpose_pil = openpose(pose_im, hand_and_face=True).resize((W, H), Image.LANCZOS)
-    pose_openpose_pil.save(OUTDIR / "3_pose_kps.png")
-    pose_openpose_np  = np.array(pose_openpose_pil).astype(np.float32) # openpose skeleton img
 
-    
-    # Insert face HED on pose img size empty canvas
-    face_hed_canvas_np = np.zeros_like(pose_openpose_np, dtype=np.float32) # empty canvas of size pose
+    # Apply face mask on face crop
+    face_crop_np_masked = (face_crop_np * poly_mask_3c).astype(np.float32)
+
+    # Calculate position for face placement
     cx, cy = (x1+x2)//2, (y1+y2)//2  # center of face bbox of pose img
     start_x, start_y = cx - new_w//2, cy - new_h//2
-    face_hed_canvas_np[start_y:start_y+new_h, start_x:start_x+new_w] = face_hed_np_masked
-    face_hed_canvas_pil = Image.fromarray(face_hed_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
-    face_hed_canvas_pil.save(OUTDIR / "4_hed_aligned.png")
- 
-
+    
     # Body mask (Inverse of face mask)
     face_mask_full = np.zeros((H, W), dtype=np.float32)
     cv2.fillPoly(face_mask_full, [poly_pts_scaled + [start_x, start_y]], 1.0)
     face_mask_full = cv2.GaussianBlur(face_mask_full, (31,31), sigmaX=10, sigmaY=10)
-    to_mask_image(face_mask_full).save(OUTDIR/"5_face_mask_full.png")
+    to_mask_image(face_mask_full).save(OUTDIR/"3_face_mask_full.png")
     body_mask = (1.0 - face_mask_full).astype(np.float32)
-    to_mask_image(body_mask).save(OUTDIR/"6_body_mask.png")
+    to_mask_image(body_mask).save(OUTDIR/"4_body_mask.png")
+
+    # Apply body mask on pose img
+    pose_np = np.array(pose_im).astype(np.float32)
+    pose_np_masked = (pose_np * body_mask[:,:,np.newaxis]).astype(np.float32)
 
 
-    # ControlNet setup
+
+
+    # --- Composite ---
+
+    # Create composite: face crop in face region + pose img in body region
+    pose_np = np.array(pose_im).astype(np.float32)
+    
+    # Start with pose image masked to body only
+    integrated_canvas_np = pose_np * body_mask[:,:,np.newaxis]
+    
+    # Overlay masked face crop at the correct position
+    end_x, end_y = start_x + new_w, start_y + new_h
+    start_x_clip, start_y_clip = max(0, start_x), max(0, start_y)
+    end_x_clip, end_y_clip = min(W, end_x), min(H, end_y)
+    
+    face_start_x = max(0, -start_x + cx - new_w//2)
+    face_start_y = max(0, -start_y + cy - new_h//2)
+    face_end_x = face_start_x + (end_x_clip - start_x_clip)
+    face_end_y = face_start_y + (end_y_clip - start_y_clip)
+    
+    integrated_canvas_np[start_y_clip:end_y_clip, start_x_clip:end_x_clip] += face_crop_np_masked[face_start_y:face_end_y, face_start_x:face_end_x]
+    integrated_canvas_pil = Image.fromarray(integrated_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
+    integrated_canvas_pil.save(OUTDIR / "5_integrated_canvas.png")
+
+
+    
+
+
+    # --- kps ---
+    # Openpose
+    openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
+    pose_openpose_pil = openpose(integrated_canvas_pil, hand_and_face=True).resize((W, H), Image.LANCZOS)
+    pose_openpose_pil.save(OUTDIR / "7_pose_kps.png")
+    pose_openpose_np  = np.array(pose_openpose_pil).astype(np.float32) # openpose skeleton img
+
+    # Insert face HED on pose img size empty canvas
+    face_hed_canvas_np = np.zeros_like(pose_openpose_np, dtype=np.float32) # empty canvas of size pose
+    face_hed_canvas_np[start_y:start_y+new_h, start_x:start_x+new_w] = face_hed_np_masked
+    face_hed_canvas_pil = Image.fromarray(face_hed_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
+    face_hed_canvas_pil.save(OUTDIR / "6_hed_aligned.png")
+
+    
+    
+    # --- Infer ---
+    # ControlNet 
     controlnets = [
         ControlNetModel.from_pretrained(CN_POSE, torch_dtype=DTYPE, use_safetensors=False),
         ControlNetModel.from_pretrained(CN_HED, torch_dtype=DTYPE)
@@ -111,7 +161,7 @@ def main(gpu_idx: int):
 
     images = [pose_openpose_pil,face_hed_canvas_pil]
     scales = [COND_POSE, COND_HED]
-    masks = [to_mask_image(body_mask), None]
+    masks = [None,to_mask_image(face_mask_full)]
 
 
     pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
@@ -151,7 +201,7 @@ def main(gpu_idx: int):
     )[0]
     del ip
     
-    out.save(OUTDIR/"7_final_result.png")
+    out.save(OUTDIR/"8_final_result.png")
     print(f"✅ Saved all intermediates in {OUTDIR}")
 
 

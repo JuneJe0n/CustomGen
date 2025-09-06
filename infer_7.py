@@ -1,5 +1,5 @@
 """
-Inference codes for method 5 - (5) Ablation HED wo face mask multiplication + face mask
+7. m5 (face mesh HED + pose kps)
 """
 import argparse, cv2, torch, numpy as np
 from pathlib import Path
@@ -76,8 +76,7 @@ def main(gpu_idx: int):
     poly_pts_scaled, poly_mask, poly_mask_3c = create_face_mask(face_crop_pil, fw, fh, scale, new_h, new_w)
 
     # Apply face mask on HED
-    # face_hed_np_masked = (face_hed_np * poly_mask_3c).astype(np.float32)
-    face_hed_np_masked = face_hed_np.astype(np.float32)
+    face_hed_np_masked = (face_hed_np * poly_mask_3c).astype(np.float32)
    
     # Openpose
     openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
