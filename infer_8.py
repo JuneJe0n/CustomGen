@@ -31,8 +31,7 @@ def main(gpu_idx: int):
     W, H = pose_im.size
 
 
-
-    # -- bbox ---
+    # --- bbox ---
     # Face detector
     face_det = FaceAnalysis(
         name="antelopev2",
