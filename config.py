@@ -5,7 +5,7 @@ from utils import PromptGenerator
 FACE_IMG  = Path("/data2/jiyoon/custom/data/ablation/face/baby/00000.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/ablation/pose/baby/b_0.jpeg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/ablation/style/wikiart_021.jpg")
-OUTDIR    = Path("/home/jiyoon")
+OUTDIR    = Path("/data2/jeesoo/custom")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # prompts
