@@ -22,7 +22,7 @@ except NameError:
 try:
     SAVE_INTERMEDIATES
 except NameError:
-    SAVE_INTERMEDIATES = False  # 기본: 중간 산출물 저장 안 함
+    SAVE_INTERMEDIATES = True  # 기본: 중간 산출물 저장 안 함
     
 use_style = True
 
@@ -165,23 +165,36 @@ def main(gpu_idx: int):
     face_hed_np       = _ensure_3c(np.array(face_hed_resized).astype(np.float32))
     face_hed_np       = soften_hed(face_hed_np, EDGE_ALPHA)
 
+    
+    # 타원+거리기반 페더 마스크
+    face_w, body_w = ellipse_face_masks(W, H, x1, y1, x2, y2, INNER_BW, OUTER_BW, OVERLAP_RATIO)
+    face_mask_L = to_mask_L(face_w)
+    body_mask_L = to_mask_L(body_w)
+
+    # face_mask_L을 numpy array로 변환하고 얼굴 영역 크기로 크롭
+    face_mask_np = np.array(face_mask_L).astype(np.float32) / 255.0
+    face_mask_cropped = face_mask_np[y1:y2, x1:x2]
+    
+    # 3채널로 확장하여 브로드캐스팅 가능하게 함
+    face_mask_cropped_3c = np.expand_dims(face_mask_cropped, axis=-1)
+    
+    face_hed_np_masked = (face_hed_np * face_mask_cropped_3c).astype(np.float32)
+
+    if SAVE_INTERMEDIATES:
+        face_mask_L.save(OUTDIR/"mask_face_elliptic.png")
+        body_mask_L.save(OUTDIR/"mask_body_overlap.png")
+
+
     # 얼굴 HED 캔버스(전역)
     face_hed_canvas_np = np.zeros_like(pose_openpose_np, dtype=np.float32)
-    face_hed_canvas_np[y1:y2, x1:x2] = face_hed_np
+    face_hed_canvas_np[y1:y2, x1:x2] = face_hed_np_masked
     face_hed_canvas_pil = Image.fromarray(face_hed_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
 
     if SAVE_INTERMEDIATES:
         Image.fromarray(pose_openpose_np.clip(0,255).astype(np.uint8)).save(OUTDIR/"cond_body_openpose_raw.png")
         face_hed_canvas_pil.save(OUTDIR/"cond_hed_soft.png")
 
-    # 타원+거리기반 페더 마스크
-    face_w, body_w = ellipse_face_masks(W, H, x1, y1, x2, y2, INNER_BW, OUTER_BW, OVERLAP_RATIO)
-    face_mask_L = to_mask_L(face_w)
-    body_mask_L = to_mask_L(body_w)
-
-    if SAVE_INTERMEDIATES:
-        face_mask_L.save(OUTDIR/"mask_face_elliptic.png")
-        body_mask_L.save(OUTDIR/"mask_body_overlap.png")
+   
 
     # ── Multi-ControlNet: A) OpenPose(몸, body_mask) + B) HED(얼굴, face_mask)
     controlnets, images, scales, masks = [], [], [], []
@@ -190,13 +203,13 @@ def main(gpu_idx: int):
     controlnets.append(ControlNetModel.from_pretrained(CN_POSE, torch_dtype=DTYPE))
     images.append(pose_openpose_pil)
     scales.append(COND_POSE)
-    masks.append(body_mask_L)   # 몸 영역만 활성
+    # masks.append(body_mask_L)   # 몸 영역만 활성
 
     # B) HED (얼굴)
     controlnets.append(ControlNetModel.from_pretrained(CN_HED, torch_dtype=DTYPE))
     images.append(face_hed_canvas_pil)
     scales.append(COND_HED)
-    masks.append(face_mask_L)   # 얼굴 영역만 활성
+    # masks.append(face_mask_L)   # 얼굴 영역만 활성
 
     pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
         BASE_SDXL,
