@@ -1,8 +1,7 @@
 """
 Modified Pipeline:
-1. Generate prompt from pose image only
-2. Stage 1) InstantID: face image + pose image + generated prompt
-3. Stage 2) InstantStyle: Stage1 output + style image + generated prompt
+- Stage 1) InstantID: face image + pose image + generated prompt
+- Stage 2) InstantStyle: Stage1 output + style image + generated prompt
 """
 
 import os
@@ -39,18 +38,6 @@ DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.float16 if DEVICE.startswith("cuda") else torch.float32
 
 
-# --- Step 1: Generate Prompt from Pose Image Only ---
-def generate_prompt_from_pose(pose_image_path):
-    """Generate prompt using only the pose image with POSE_PROMPT"""
-    print("Generating prompt from pose image...")
-
-    generator = PromptGenerator()
-    
-    # Use POSE_PROMPT to analyze pose image
-    pose_prompt = generator.analyze_image(pose_image_path, POSE_PROMPT)
-    
-    print(f"Generated pose prompt: {pose_prompt}")
-    return pose_prompt
 
 
 # --- Utility Functions ---
@@ -166,38 +153,6 @@ def stage1_instantid_generation(face_image_path, pose_image_path, prompt):
     )
 
     generated_image = result.images[0]
-    
-    # Validate output
-    img_array = np.array(generated_image)
-    min_val, max_val, mean_val = img_array.min(), img_array.max(), img_array.mean()
-    print(f"Generated image stats: min={min_val}, max={max_val}, mean={mean_val:.2f}")
-    
-    if max_val == 0:
-        print("⚠️  WARNING: Generated image appears to be completely black!")
-        print("Retrying with reduced controlnet strength...")
-        with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=DEVICE.startswith("cuda")):
-            result = pipe(
-                prompt=prompt,
-                negative_prompt=NEG,
-                image_embeds=face_emb,
-                image=[face_kps, processed_depth],  # Remove control_mask
-                controlnet_conditioning_scale=[0.5, 0.5],  # Reduced strength
-                control_guidance_start=[0.0, 0.0],
-                control_guidance_end=[1.0, 1.0],
-                ip_adapter_scale=0.6,  # Reduced IP adapter strength
-                num_inference_steps=30,
-                guidance_scale=7.0,  # Increased guidance
-                generator=generator,
-            )
-        generated_image = result.images[0]
-        
-        # Check again
-        img_array = np.array(generated_image)
-        min_val, max_val, mean_val = img_array.min(), img_array.max(), img_array.mean()
-        print(f"Retry image stats: min={min_val}, max={max_val}, mean={mean_val:.2f}")
-        
-        if max_val == 0:
-            print("❌ Still generating black images after retry. This may be a model compatibility issue.")
 
     return generated_image
 
@@ -283,35 +238,6 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
         )
 
     result_image = images[0]
-    
-    # Validate output and retry if black
-    result_array = np.array(result_image)
-    min_val, max_val, mean_val = result_array.min(), result_array.max(), result_array.mean()
-    print(f"Final image stats: min={min_val}, max={max_val}, mean={mean_val:.2f}")
-    
-    if max_val == 0:
-        print("⚠️ WARNING: Stage 2 generated black image! Retrying with different parameters...")
-        images = ip_model.generate(
-            pil_image=style_image,
-            prompt=prompt,
-            negative_prompt=NEG,
-            scale=0.4,  # Very reduced scale
-            guidance_scale=3.0,  # Much lower guidance
-            num_samples=1,
-            num_inference_steps=15,  # Fewer steps
-            seed=SEED,
-            image=canny_map,
-            controlnet_conditioning_scale=0.2,  # Very low controlnet strength
-        )
-        result_image = images[0]
-        
-        # Check again
-        result_array = np.array(result_image)
-        min_val, max_val, mean_val = result_array.min(), result_array.max(), result_array.mean()
-        print(f"Retry image stats: min={min_val}, max={max_val}, mean={mean_val:.2f}")
-        
-        if max_val == 0:
-            print("❌ Still generating black images. This may be an IP-Adapter compatibility issue.")
 
     return result_image
 
