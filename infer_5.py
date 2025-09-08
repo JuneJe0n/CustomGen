@@ -1,5 +1,5 @@
 """
-5. m3 (face HED_ellipse + pose kps)
+5. m4 (face ellipse HED + pose kps)
 """
 
 import argparse, cv2, torch, numpy as np, re

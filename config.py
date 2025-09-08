@@ -5,7 +5,7 @@ from utils import PromptGenerator
 FACE_IMG  = Path("/data2/jiyoon/custom/data/ablation/face/baby/00000.png")
 POSE_IMG  = Path("/data2/jiyoon/custom/data/ablation/pose/baby/b_0.jpeg")
 STYLE_IMG = Path("/data2/jiyoon/custom/data/ablation/style/wikiart_021.jpg")
-OUTDIR    = Path("/data2/jeesoo/custom")
+OUTDIR    = Path("/home/jiyoon")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # prompts
@@ -17,7 +17,7 @@ NEG = "(lowres, bad quality, watermark,strange limbs)"
 CN_HED     = "/data2/jiyoon/custom/ckpts/controlnet-union-sdxl-1.0"
 CN_POSE    = "/data2/jiyoon/custom/ckpts/controlnet-openpose-sdxl-1.0"
 BASE_SDXL  = "stabilityai/stable-diffusion-xl-base-1.0"
-STYLE_ENC  = "/data2/jiyoon/IP-Adapter/sdxl_models/image_encoder"
+STYLE_ENC  = "/data2/jiyoon/II P-Adapter/sdxl_models/image_encoder"
 STYLE_IP   = "/data2/jiyoon/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin"
 
 # params

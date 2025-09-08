@@ -1,5 +1,5 @@
 """
-4. m3 (face HED_bbox + pose kps)
+4. m3 (face bbox HED + pose kps)
 """
 
 import argparse, cv2, torch, numpy as np, re
