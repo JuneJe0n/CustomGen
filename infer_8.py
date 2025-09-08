@@ -160,7 +160,7 @@ def main(gpu_idx: int):
 
     images = [pose_openpose_pil,face_hed_canvas_pil]
     scales = [COND_POSE, COND_HED]
-    masks = [None,to_mask_image(face_mask_full)]
+    masks = [None,None]
 
 
     pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
