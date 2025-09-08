@@ -17,7 +17,7 @@ NEG = "(lowres, bad quality, watermark,strange limbs)"
 CN_HED     = "/data2/jiyoon/custom/ckpts/controlnet-union-sdxl-1.0"
 CN_POSE    = "/data2/jiyoon/custom/ckpts/controlnet-openpose-sdxl-1.0"
 BASE_SDXL  = "stabilityai/stable-diffusion-xl-base-1.0"
-STYLE_ENC  = "/data2/jiyoon/II P-Adapter/sdxl_models/image_encoder"
+STYLE_ENC  = "/data2/jiyoon/IP-Adapter/sdxl_models/image_encoder"
 STYLE_IP   = "/data2/jiyoon/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin"
 
 # params

@@ -22,8 +22,6 @@ from controlnet_aux import MidasDetector
 from ip_adapter import IPAdapterXL
 
 from config import *
-from utils import PromptGenerator
-from utils.prompts import POSE_PROMPT
 
 # --- Model Configuration ---
 BASE_MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -98,14 +96,11 @@ def stage1_instantid_generation(face_image_path, pose_image_path, prompt):
     print("="*50)
     print("Initializing InstantID pipeline...")
     
-    # Initialize face analysis (use CPU like working infer_full.py)
     app = FaceAnalysis(name="antelopev2", root="/data2/jiyoon/InstantID", providers=['CPUExecutionProvider'])
     app.prepare(ctx_id=0, det_size=(640, 640))
 
-    # Initialize depth detector
     midas = MidasDetector.from_pretrained("lllyasviel/Annotators")
 
-    # Load ControlNets (keypoints + depth) - match working infer_full.py pattern
     controlnet_list = [INSTANTID_CONTROLNET_FACEKPS, INSTANTID_CONTROLNET_DEPTH]
     controlnet_model_list = []
     for controlnet_path in controlnet_list:
@@ -113,16 +108,14 @@ def stage1_instantid_generation(face_image_path, pose_image_path, prompt):
         controlnet_model_list.append(controlnet)
     multi_controlnet = MultiControlNetModel(controlnet_model_list)
 
-    # Initialize InstantID pipeline (match working infer_full.py)
     pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
         BASE_MODEL,
         controlnet=multi_controlnet,
         torch_dtype=torch.float16,
     )
-    pipe.cuda()  # Use cuda() method like working version
+    pipe.cuda() 
     pipe.load_ip_adapter_instantid(INSTANTID_IP_ADAPTER)
 
-    # Process face image
     print("Processing face image...")
     face_image = load_image(str(face_image_path))
     face_image = resize_img(face_image)
@@ -131,11 +124,8 @@ def stage1_instantid_generation(face_image_path, pose_image_path, prompt):
     if not faces:
         raise RuntimeError(f"No face found in face image: {face_image_path}")
     
-    # Get largest face for identity
     face_info = max(faces, key=lambda x: (x["bbox"][2] - x["bbox"][0]) * (x["bbox"][3] - x["bbox"][1]))
     face_emb = face_info["embedding"]
-
-    # Process pose image  
     print("Processing pose image...")
     pose_image = load_image(str(pose_image_path))
     pose_image = resize_img(pose_image)
@@ -144,28 +134,21 @@ def stage1_instantid_generation(face_image_path, pose_image_path, prompt):
     if not pose_faces:
         raise RuntimeError(f"No face found in pose image: {pose_image_path}")
     
-    # Get largest face for pose
     pose_face_info = max(pose_faces, key=lambda x: (x["bbox"][2] - x["bbox"][0]) * (x["bbox"][3] - x["bbox"][1]))
-    
-    # Generate keypoints control image
     face_kps = draw_kps(pose_image, pose_face_info["kps"])
-    
-    # Generate depth control image
+
     processed_depth = midas(pose_image).resize(pose_image.size)
 
-    # Create control mask to enhance face region
     w, h = face_kps.size
     x1, y1, x2, y2 = map(int, pose_face_info["bbox"])
     control_mask = np.zeros((h, w, 3), dtype=np.uint8)
     control_mask[y1:y2, x1:x2] = 255
     control_mask = Image.fromarray(control_mask)
 
-    # Debug information
     print(f"Face embedding shape: {face_emb.shape}")
     print(f"Control images size: {face_kps.size}")
     print(f"Prompt: '{prompt}'")
 
-    # Generate image (match working infer_full.py exactly)
     print("Generating image with InstantID...")
     
     result = pipe(
@@ -179,7 +162,7 @@ def stage1_instantid_generation(face_image_path, pose_image_path, prompt):
         control_guidance_end=[1.0, 1.0],
         ip_adapter_scale=0.8,
         num_inference_steps=30,
-        guidance_scale=5,  # Remove .0 to match exactly
+        guidance_scale=5,  
     )
 
     generated_image = result.images[0]
@@ -231,14 +214,12 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
     print("="*50)
     print("Initializing InstantStyle pipeline...")
     
-    # Load ControlNet for canny edge detection
     controlnet = ControlNetModel.from_pretrained(
         INSTANTSTYLE_CONTROLNET_CANNY, 
         use_safetensors=False, 
         torch_dtype=DTYPE
     ).to(DEVICE)
 
-    # Initialize pipeline
     pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
         BASE_MODEL,
         controlnet=controlnet,
@@ -251,7 +232,6 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
         pipe.enable_vae_tiling()
         pipe.enable_xformers_memory_efficient_attention()
 
-    # Initialize IP-Adapter for style transfer
     ip_model = IPAdapterXL(
         pipe,
         image_encoder_path=STYLE_ENC,
@@ -260,22 +240,18 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
         target_blocks=["up_blocks.0.attentions.1"],
     )
 
-    # Process style image
     print("Processing style image...")
     style_image = Image.open(style_image_path).convert("RGB").resize((512, 512), Image.BILINEAR)
 
-    # Create canny edge map from input image
     print("Creating canny edge map...")
     input_cv2 = convert_from_image_to_cv2(input_image)
     edges = cv2.Canny(input_cv2, threshold1=50, threshold2=200)
-    canny_map = Image.fromarray(edges)  # Single channel grayscale
+    canny_map = Image.fromarray(edges)  
 
-    # Debug information
     print(f"Input image size: {input_image.size}")
     print(f"Style image size: {style_image.size}")
     print(f"Canny map size: {canny_map.size}")
 
-    # Generate styled image
     print("Generating styled image...")
     with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=DEVICE.startswith("cuda")):
         images = ip_model.generate(
@@ -293,7 +269,6 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
 
     result_image = images[0]
     
-    # Validate output
     result_array = np.array(result_image)
     min_val, max_val, mean_val = result_array.min(), result_array.max(), result_array.mean()
     print(f"Final image stats: min={min_val}, max={max_val}, mean={mean_val:.2f}")
@@ -306,38 +281,27 @@ def main():
     """Execute the complete pipeline"""
     print("🚀 Starting Modified InstantID → InstantStyle Pipeline")
     print(f"Using device: {DEVICE}")
-    print("="*60)
-    
-    # Ensure output directory exists
+
     OUTDIR.mkdir(parents=True, exist_ok=True)
     
     try:
-        # Step 1: Generate prompt from pose image only
-        print("STEP 1: Generating prompt from pose image using POSE_PROMPT")
-        print("="*50)
-        pose_generated_prompt = generate_prompt_from_pose(POSE_IMG)
-        
-        # Step 2: Stage 1 - InstantID generation (use pose-generated prompt)
         stage1_result = stage1_instantid_generation(
             face_image_path=FACE_IMG,
             pose_image_path=POSE_IMG,
-            prompt=pose_generated_prompt,  # Use pose-generated prompt for Stage 1
+            prompt=PROMPT,  
         )
         
-        # Save intermediate result
         intermediate_path = OUTDIR / "0_stage1_instantid_result.jpg"
         stage1_result.save(intermediate_path)
         print(f"✅ Stage 1 complete! Result saved to: {intermediate_path}")
 
-        # Step 3: Stage 2 - InstantStyle transfer (use config PROMPT)
-        print(f"Using config PROMPT for Stage 2: '{PROMPT}'")
+
         final_result = stage2_instantstyle_transfer(
             input_image=stage1_result,
             style_image_path=STYLE_IMG,
-            prompt=PROMPT,  # Use config.py PROMPT for Stage 2
+            prompt=PROMPT, 
         )
         
-        # Save final result
         final_path = OUTDIR / "1_final_styled_result.jpg"
         final_result.save(final_path)
         print(f"✅ Stage 2 complete! Final result saved to: {final_path}")
@@ -345,8 +309,7 @@ def main():
         print("\n" + "="*60)
         print("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
         print("="*60)
-        print(f"Stage 1 prompt (pose-generated): '{pose_generated_prompt}'")
-        print(f"Stage 2 prompt (config): '{PROMPT}'")
+        print(f"Prompt used for both stages: '{PROMPT}'")
         print(f"Intermediate result: {intermediate_path}")
         print(f"Final result: {final_path}")
         
