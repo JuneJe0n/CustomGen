@@ -220,17 +220,15 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
         torch_dtype=DTYPE
     ).to(DEVICE)
 
+    # Use same pattern as working InstantID pipeline
     pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
         BASE_MODEL,
         controlnet=controlnet,
-        torch_dtype=DTYPE,
+        torch_dtype=torch.float16,  # Match working version
         add_watermarker=False,
     )
-    pipe.to(DEVICE)
-    
-    if DEVICE.startswith("cuda"):
-        pipe.enable_vae_tiling()
-        pipe.enable_xformers_memory_efficient_attention()
+    pipe.to("cuda:0")  # Use explicit device instead of cuda() method
+    # Remove vae_tiling and xformers to avoid NaN issues
 
     ip_model = IPAdapterXL(
         pipe,
@@ -253,7 +251,8 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
     print(f"Canny map size: {canny_map.size}")
 
     print("Generating styled image...")
-    with torch.autocast(device_type="cuda", dtype=torch.float16, enabled=DEVICE.startswith("cuda")):
+    # Remove autocast to avoid NaN issues like in Stage 1 fix
+    try:
         images = ip_model.generate(
             pil_image=style_image,
             prompt=prompt,
@@ -266,12 +265,53 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
             image=canny_map,
             controlnet_conditioning_scale=0.6,
         )
+        print("Generation completed successfully")
+    except Exception as e:
+        print(f"Generation failed: {e}")
+        print("Retrying with reduced parameters...")
+        images = ip_model.generate(
+            pil_image=style_image,
+            prompt=prompt,
+            negative_prompt=NEG,
+            scale=0.6,  # Reduced scale
+            guidance_scale=5.0,  # Reduced guidance
+            num_samples=1,
+            num_inference_steps=20,  # Reduced steps
+            seed=SEED,
+            image=canny_map,
+            controlnet_conditioning_scale=0.4,  # Reduced controlnet strength
+        )
 
     result_image = images[0]
     
+    # Validate output and retry if black
     result_array = np.array(result_image)
     min_val, max_val, mean_val = result_array.min(), result_array.max(), result_array.mean()
     print(f"Final image stats: min={min_val}, max={max_val}, mean={mean_val:.2f}")
+    
+    if max_val == 0:
+        print("⚠️ WARNING: Stage 2 generated black image! Retrying with different parameters...")
+        images = ip_model.generate(
+            pil_image=style_image,
+            prompt=prompt,
+            negative_prompt=NEG,
+            scale=0.4,  # Very reduced scale
+            guidance_scale=3.0,  # Much lower guidance
+            num_samples=1,
+            num_inference_steps=15,  # Fewer steps
+            seed=SEED,
+            image=canny_map,
+            controlnet_conditioning_scale=0.2,  # Very low controlnet strength
+        )
+        result_image = images[0]
+        
+        # Check again
+        result_array = np.array(result_image)
+        min_val, max_val, mean_val = result_array.min(), result_array.max(), result_array.mean()
+        print(f"Retry image stats: min={min_val}, max={max_val}, mean={mean_val:.2f}")
+        
+        if max_val == 0:
+            print("❌ Still generating black images. This may be an IP-Adapter compatibility issue.")
 
     return result_image
 
