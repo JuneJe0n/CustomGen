@@ -91,14 +91,6 @@ def ellipse_face_masks(W:int, H:int, x1:int, y1:int, x2:int, y2:int,
     body_w  = np.clip(1.0 - overlap_ratio * face_w, 0.0, 1.0).astype(np.float32)
     return face_w, body_w
 
-def soften_hed(face_hed_np: np.ndarray, edge_alpha: float) -> np.ndarray:
-    """HED 결과를 얇게/블러/대비↓"""
-    ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3,3))
-    out = cv2.erode(face_hed_np, ker, iterations=1)
-    out = cv2.GaussianBlur(out, (5,5), sigmaX=1.2)
-    out = (out * edge_alpha).clip(0,255).astype(np.float32)
-    return out
-
 # ───────── 메인 ─────────
 def main(gpu_idx: int):
     DEVICE = f"cuda:{gpu_idx}"
@@ -163,7 +155,6 @@ def main(gpu_idx: int):
     face_hed_crop_pil = hed(face_crop_pil, safe=False, scribble=False)
     face_hed_resized  = face_hed_crop_pil.resize((pw, ph), Image.LANCZOS)
     face_hed_np       = _ensure_3c(np.array(face_hed_resized).astype(np.float32))
-    face_hed_np       = soften_hed(face_hed_np, EDGE_ALPHA)
 
     
     # 타원+거리기반 페더 마스크
