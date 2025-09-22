@@ -15,8 +15,8 @@ from tqdm import tqdm
 
 def main():
     # Configuration
-    input_folder = Path("/data2/jiyoon/custom/results/final/infer_1") 
-    output_folder = Path("/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet/face/infer_1")  
+    input_folder = Path("/data2/jiyoon/custom/data/ablation/face/adult") 
+    output_folder = Path("/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet/face/infer_8_ours")  
     
     # Create output directory
     output_folder.mkdir(parents=True, exist_ok=True)
