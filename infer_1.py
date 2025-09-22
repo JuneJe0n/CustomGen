@@ -8,6 +8,7 @@ import os
 import cv2
 import torch
 import numpy as np
+import argparse
 from PIL import Image
 from pathlib import Path
 
@@ -33,7 +34,8 @@ INSTANTID_CONTROLNET_DEPTH = "/data2/jiyoon/instantstyle/checkpoints/controlnet-
 # InstantStyle paths
 INSTANTSTYLE_CONTROLNET_CANNY = "/data2/jiyoon/instantstyle/checkpoints/controlnet-canny-sdxl-1.0"
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+# GPU will be set by bash script via CUDA_VISIBLE_DEVICES
+# Using cuda:0 since CUDA_VISIBLE_DEVICES maps the selected GPU to cuda:0
 DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
 DTYPE = torch.float16 if DEVICE.startswith("cuda") else torch.float32
 
@@ -140,7 +142,7 @@ def stage1_instantid_generation(face_image_path, pose_image_path, prompt):
     
     result = pipe(
         prompt=prompt,
-        negative_prompt=NEG,
+        negative_prompt="(lowres, bad quality, watermark,strange limbs)",
         image_embeds=face_emb,
         control_mask=control_mask,
         image=[face_kps, processed_depth],
@@ -211,7 +213,7 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
         images = ip_model.generate(
             pil_image=style_image,
             prompt=prompt,
-            negative_prompt=NEG,
+            negative_prompt="(lowres, bad quality, watermark,strange limbs)",
             scale=STYLE_SCALE,
             guidance_scale=CFG,
             num_samples=1,
@@ -227,7 +229,7 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
         images = ip_model.generate(
             pil_image=style_image,
             prompt=prompt,
-            negative_prompt=NEG,
+            negative_prompt="(lowres, bad quality, watermark,strange limbs)",
             scale=0.6,  # Reduced scale
             guidance_scale=5.0,  # Reduced guidance
             num_samples=1,
@@ -243,48 +245,64 @@ def stage2_instantstyle_transfer(input_image, style_image_path, prompt):
 
 
 # --- Main Pipeline ---
-def main():
+def main(face_img_path, pose_img_path, style_img_path, output_path):
     """Execute the complete pipeline"""
     print("🚀 Starting Modified InstantID → InstantStyle Pipeline")
     print(f"Using device: {DEVICE}")
-
-    OUTDIR.mkdir(parents=True, exist_ok=True)
+    print(f"Face image: {face_img_path}")
+    print(f"Pose image: {pose_img_path}")
+    print(f"Style image: {style_img_path}")
+    print(f"Output path: {output_path}")
+    
+    # Create output directory
+    output_dir = Path(output_path).parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate prompt using the provided images
+    from utils import PromptGenerator
+    generator = PromptGenerator()
+    prompt = generator.generate_combined_prompt(Path(face_img_path), Path(pose_img_path))
+    
+    print(f"Generated prompt: '{prompt}'")
     
     try:
         stage1_result = stage1_instantid_generation(
-            face_image_path=FACE_IMG,
-            pose_image_path=POSE_IMG,
-            prompt=PROMPT,  
+            face_image_path=face_img_path,
+            pose_image_path=pose_img_path,
+            prompt=prompt,
         )
         
-        intermediate_path = OUTDIR / "0_stage1_instantid_result.jpg"
-        stage1_result.save(intermediate_path)
-        print(f"✅ Stage 1 complete! Result saved to: {intermediate_path}")
-
+        print("✅ Stage 1 complete!")
 
         final_result = stage2_instantstyle_transfer(
             input_image=stage1_result,
-            style_image_path=STYLE_IMG,
-            prompt=PROMPT, 
+            style_image_path=style_img_path,
+            prompt=prompt,
         )
         
-        final_path = OUTDIR / "1_final_styled_result.jpg"
-        final_result.save(final_path)
-        print(f"✅ Stage 2 complete! Final result saved to: {final_path}")
+        # Save final result with the specified filename
+        final_result.save(output_path)
+        print(f"✅ Stage 2 complete! Final result saved to: {output_path}")
         
-        print("\n" + "="*60)
-        print("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
-        print("="*60)
-        print(f"Prompt used for both stages: '{PROMPT}'")
-        print(f"Intermediate result: {intermediate_path}")
-        print(f"Final result: {final_path}")
+        return True
         
     except Exception as e:
         print(f"\n❌ Pipeline failed with error: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise
+        return False
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='Generate images using InstantID and InstantStyle pipeline')
+    parser.add_argument('--face_img', type=str, required=True, help='Path to face image')
+    parser.add_argument('--pose_img', type=str, required=True, help='Path to pose image')
+    parser.add_argument('--style_img', type=str, required=True, help='Path to style image')
+    parser.add_argument('--output_path', type=str, required=True, help='Output path for final result')
+    
+    args = parser.parse_args()
+    
+    success = main(args.face_img, args.pose_img, args.style_img, args.output_path)
+    
+    if not success:
+        exit(1)

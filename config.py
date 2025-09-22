@@ -1,5 +1,4 @@
 from pathlib import Path
-from utils import PromptGenerator
 
 # img paths
 FACE_IMG  = Path("/data2/jiyoon/custom/data/ablation/face/baby/00000.png")
@@ -9,8 +8,6 @@ OUTDIR    = Path("/home/jiyoon/aaa")
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
 # prompts
-generator = PromptGenerator()
-PROMPT = generator.generate_combined_prompt(FACE_IMG, POSE_IMG)
 NEG = "(lowres, bad quality, watermark,strange limbs)"
 
 # model paths

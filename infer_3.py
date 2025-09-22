@@ -27,7 +27,7 @@ SAVE_INTERMEDIATES = False  # ← 요청사항: 기본 False
 
 # 방어적 체크
 _required_cfg = ["BASE_SDXL", "CN_POSE", "COND_POSE", "FACE_IMG", "POSE_IMG",
-                 "STYLE_IMG", "PROMPT", "NEG", "CFG", "STEPS", "SEED", "OUTDIR",
+                 "STYLE_IMG", "NEG", "CFG", "STEPS", "SEED", "OUTDIR",
                  "STYLE_ENC", "STYLE_IP", "STYLE_SCALE", "use_style"]
 _missing = [k for k in _required_cfg if k not in globals()]
 if _missing:
@@ -37,35 +37,44 @@ def _safe_name(s: str) -> str:
     # 파일명 안전화: 영숫자/._-만 허용
     return re.sub(r"[^A-Za-z0-9._-]+", "", s)
 
-def main(gpu_idx: int):
-    DEVICE = f"cuda:{gpu_idx}"
+def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_path: str, gpu_idx: int = 0):
+    # Set GPU - use cuda:0 when CUDA_VISIBLE_DEVICES is set, otherwise use specified gpu_idx
+    import os
+    if 'CUDA_VISIBLE_DEVICES' in os.environ:
+        DEVICE = "cuda:0"
+    else:
+        DEVICE = f"cuda:{gpu_idx}"
     DTYPE  = torch.float16
     torch.manual_seed(SEED)
-    OUTDIR.mkdir(parents=True, exist_ok=True)
-
-    # 파일명 조합용 stem 추출
-    face_stem  = Path(FACE_IMG).stem
-    pose_stem  = Path(POSE_IMG).stem
-    style_stem = Path(STYLE_IMG).stem
-    fname_base = _safe_name(f"{face_stem}_{pose_stem}_{style_stem}")
+    
+    # Set output path
+    final_path = Path(output_path)
+    final_path.parent.mkdir(parents=True, exist_ok=True)
 
     # 입력 로드 & 리사이즈
-    face_im  = to_sdxl_res(load_rgb(FACE_IMG))
-    pose_im  = to_sdxl_res(load_rgb(POSE_IMG))
+    face_im  = to_sdxl_res(load_rgb(face_img_path))
+    pose_im  = to_sdxl_res(load_rgb(pose_img_path))
+    
+    # Generate prompt based on input images
+    from utils import PromptGenerator
+    generator = PromptGenerator()
+    prompt = generator.generate_combined_prompt(face_img_path, pose_img_path)
     if SAVE_INTERMEDIATES:
         face_im.save(OUTDIR / "0_face_input.png")
         pose_im.save(OUTDIR / "1_pose_input.png")
-        load_rgb(STYLE_IMG).save(OUTDIR / "2_style_input.png")  # 보기용 저장
+        load_rgb(style_img_path).save(OUTDIR / "2_style_input.png")  # 보기용 저장
 
     w_pose, h_pose = pose_im.size
 
     # 얼굴 검출기 & OpenPose Detector
+    # Use device 0 when CUDA_VISIBLE_DEVICES is set, otherwise use gpu_idx
+    device_id = 0 if 'CUDA_VISIBLE_DEVICES' in os.environ else gpu_idx
     face_det = FaceAnalysis(
         name="antelopev2",
         root=str(FACE_DET_ROOT),
-        providers=[('CUDAExecutionProvider', {'device_id': gpu_idx}), 'CPUExecutionProvider']
+        providers=[('CUDAExecutionProvider', {'device_id': device_id}), 'CPUExecutionProvider']
     )
-    face_det.prepare(ctx_id=gpu_idx, det_size=(640, 640))
+    face_det.prepare(ctx_id=device_id, det_size=(640, 640))
 
     openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
 
@@ -139,7 +148,7 @@ def main(gpu_idx: int):
         pipe.to(DEVICE)
 
     gen_args = dict(
-        prompt=PROMPT,
+        prompt=prompt,
         negative_prompt=NEG,
         num_inference_steps=STEPS,
         guidance_scale=CFG,
@@ -149,7 +158,7 @@ def main(gpu_idx: int):
     )
 
     if use_style:
-        style_pil = load_rgb(STYLE_IMG)
+        style_pil = load_rgb(style_img_path)
         ip = IPAdapterXL(
             pipe, STYLE_ENC, STYLE_IP, DEVICE,
             target_blocks=["up_blocks.0.attentions.1"]
@@ -158,14 +167,35 @@ def main(gpu_idx: int):
     else:
         out = pipe(**gen_args).images[0]
 
-    # 최종 파일명: <face>_<pose>_<style>.png
-    final_path = OUTDIR / f"{fname_base}.png"
     out.save(final_path)
-    print("saved →", final_path)
+    print(f"✅ Saved final result to {final_path}")
+    
+    # Clear GPU memory
+    if 'ip' in locals():
+        del ip
+    del pipe
+    torch.cuda.empty_cache()
+    
+    return True
 
 # ─────────────────── CLI ───────────────────
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--gpu", type=int, default=0, help="CUDA_VISIBLE_DEVICES 안에서 논리 GPU 번호")
+    ap.add_argument("--face_img", type=str, required=True, help="Path to face image")
+    ap.add_argument("--pose_img", type=str, required=True, help="Path to pose image")
+    ap.add_argument("--style_img", type=str, required=True, help="Path to style image")
+    ap.add_argument("--output_path", type=str, required=True, help="Output path for final result")
+    ap.add_argument("--gpu", type=int, default=2, help="GPU index to use")
     args = ap.parse_args()
-    main(args.gpu)
+    
+    try:
+        success = main(args.face_img, args.pose_img, args.style_img, args.output_path, args.gpu)
+        if success:
+            exit(0)
+        else:
+            exit(1)
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        exit(1)
