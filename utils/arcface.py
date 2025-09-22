@@ -14,8 +14,8 @@ ArcFace: <target-folder>/<folder>/<image> vs FFHQ anchor
 """
 실행 명령어 예시
 python arcface.py \
---target-folder /data2/jiyoon/custom/results/final/infer_3 \
---out /data2/jiyoon/custom/results/final/metric/arcface_infer3.csv
+--target-folder /data2/jiyoon/custom/results/final/infer_6 \
+--out /data2/jiyoon/custom/results/final/metric/arcface_infer6.csv
 """
 
 import argparse

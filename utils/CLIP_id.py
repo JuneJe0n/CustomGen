@@ -1,20 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+
 """
 CLIP image-image similarity:
-  <target-folder>/<folder>/<image>  vs  FFHQ/{bucket}/{id5}.{ext}
+- <target-folder>  vs  FFHQ/{bucket}/{id5}.{ext}
 
-- 폴더명: ^\\d{5}_[A-Za-z] ...  → 앞 5자리(id5)로 FFHQ 앵커 매칭
-- 전체 폴더 평가(알파벳 필터 없음)
-- FFHQ 앵커: {ffhq_root}/{id5//bucket_size:05d}/{id5}.png(.jpg)
-- 생성 이미지:
-    * 기본: 폴더 내 이미지(.png/.jpg/.jpeg/.webp/.bmp) 중 사전순 첫 번째 자동 선택
-    * 옵션: --target-name 로 파일 이름 지정(확장자 생략/접두(prefix) 매칭 지원)
-- 결과: CSV 저장 + 전체 통계(mean/min/max) + 실패 사유 집계
-"""
-
-"""
-실행 명령어 예시
 python CLIP_id.py \
 --target-folder /data2/jiyoon/custom/results/final/infer_6 \
 --out /data2/jiyoon/custom/results/final/metric/CLIP_ID_infer6.csv
@@ -36,7 +24,7 @@ import open_clip
 
 ID_ALPHA_RE = re.compile(r"^(\d{5})_([A-Za-z])")
 ALT_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".bmp"]
-ANCHOR_EXTS = [".png", ".jpg", ".jpeg"]  # FFHQ 앵커 확장자 후보
+ANCHOR_EXTS = [".png", ".jpg", ".jpeg"] 
 
 def resolve_ffhq_anchor(ffhq_root: Path, id5: str, bucket_size: int, recursive_fallback: bool = False) -> Optional[Path]:
     """
