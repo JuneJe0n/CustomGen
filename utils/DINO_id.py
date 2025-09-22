@@ -1,9 +1,9 @@
 
 """
-CLIP image-image similarity:
+DINO score computation:
 - <target-folder>  vs  FFHQ/{bucket}/{id5}.{ext}
 
-Usage: python CLIP_id.py
+Usage: python DINO_id.py
 (Modify the hardcoded values in main() function as needed)
 """
 
@@ -18,7 +18,8 @@ from collections import Counter
 from tqdm import tqdm
 
 import torch
-import open_clip
+import torchvision.transforms as transforms
+from torch.nn import functional as F
 
 ID_ALPHA_RE = re.compile(r"^(\d{5})_([A-Za-z])")
 ALT_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".bmp"]
@@ -81,39 +82,61 @@ def resolve_target_image(folder: Path, target_name: Optional[str]) -> Optional[P
     imgs = sorted([q for q in folder.iterdir() if q.is_file() and q.suffix.lower() in ALT_EXTS])
     return imgs[0] if imgs else None
 
-class CLIPScorer:
-    def __init__(self, model_name: str, pretrained: str, device: str):
+class DINOScorer:
+    def __init__(self, device: str, model_name: str = 'dino_vits16'):
         self.device = torch.device("cuda" if (device == "cuda" and torch.cuda.is_available()) else "cpu")
-        self.model, _, self.preprocess = open_clip.create_model_and_transforms(
-            model_name, pretrained=pretrained, device=self.device
-        )
+        
+        # Load DINO model from torch hub
+        self.model = torch.hub.load('facebookresearch/dino:main', model_name).to(self.device)
         self.model.eval()
+        
+        # DINO preprocessing
+        self.preprocess = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
 
     @torch.inference_mode()
-    def img_feat(self, img: Image.Image) -> torch.Tensor:
+    def extract_features(self, img: Image.Image) -> torch.Tensor:
+        """
+        Extract DINO features from an image
+        """
         x = self.preprocess(img).unsqueeze(0).to(self.device)
-        f = self.model.encode_image(x)
-        f = f / f.norm(dim=-1, keepdim=True)
-        return f.squeeze(0)
+        features = self.model(x)
+        # Normalize features
+        features = F.normalize(features, dim=1)
+        return features.squeeze(0)
+    
+    def calculate_dino_similarity(self, img1: Image.Image, img2: Image.Image) -> float:
+        """
+        Calculate DINO similarity score between two images
+        """
+        # Extract features for both images
+        feat1 = self.extract_features(img1)
+        feat2 = self.extract_features(img2)
+        
+        # Calculate cosine similarity
+        similarity = F.cosine_similarity(feat1.unsqueeze(0), feat2.unsqueeze(0))
+        return float(similarity.item())
 
 def main():
     # Hardcoded values - modify these as needed
-    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_6"
-    out_file = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/csv/CLIP_ID_infer6.csv"
+    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_7"
+    out_file = "/data2/jiyoon/custom/results/final/metric/DINO_ID/DINO_infer7.csv"
     ffhq_root_path = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/ffhq_face"
     bucket_size = 1000
     target_name = ""
-    clip_model = "ViT-L-14"
-    clip_pretrained = "openai"
     device = "cuda"
+    dino_model = "dino_vits16"  # Options: 'dino_vits16', 'dino_vits8', 'dino_vitb16', 'dino_vitb8'
 
     root_dir = Path(target_folder)
     ffhq_root = Path(ffhq_root_path)
     assert root_dir.is_dir(), f"target-folder path is not a directory: {root_dir}"
     assert ffhq_root.is_dir(), f"FFHQ root does not exist: {ffhq_root}"
 
-    clip = CLIPScorer(clip_model, clip_pretrained, device)
-    print(f"[INFO] device={clip.device}, model={clip_model}:{clip_pretrained}")
+    dino_scorer = DINOScorer(device, dino_model)
+    print(f"[INFO] device={dino_scorer.device}, model={dino_model}")
     print(f"[INFO] target_folder={root_dir} | ffhq_root={ffhq_root} | bucket_size={bucket_size} | target_name={target_name or '(auto)'}")
 
     rows: List[Dict] = []
@@ -133,8 +156,8 @@ def main():
         items_to_process = all_files
         process_mode = "files"
 
-    # Anchor embedding cache (to handle duplicate id5s)
-    anchor_feat_cache: Dict[str, Optional[torch.Tensor]] = {}
+    # Store DINO scores for statistics
+    dino_scores = []
 
     for item in tqdm(items_to_process, desc="Evaluating", ncols=100):
         if process_mode == "subdirs":
@@ -149,7 +172,7 @@ def main():
                 "id5": id5,
                 "anchor_path": "",
                 "target_path": "",
-                "clip_i": np.nan,
+                "dino_score": np.nan,
                 "notes": ""
             }
             
@@ -170,7 +193,7 @@ def main():
                 "id5": id5,
                 "anchor_path": "",
                 "target_path": str(item),
-                "clip_i": np.nan,
+                "dino_score": np.nan,
                 "notes": ""
             }
             target_path = item
@@ -181,24 +204,20 @@ def main():
             row["notes"] = "anchor_missing"; rows.append(row); continue
         row["anchor_path"] = str(anchor_path)
 
-        # Anchor embedding
-        if id5 not in anchor_feat_cache:
-            try:
-                ref_img = Image.open(anchor_path).convert("RGB")
-                anchor_feat_cache[id5] = clip.img_feat(ref_img)
-            except Exception:
-                anchor_feat_cache[id5] = None
-        a_feat = anchor_feat_cache[id5]
-        if a_feat is None:
-            row["notes"] = "anchor_open_or_feat_error"; rows.append(row); continue
-
-        # Target embedding and similarity
+        # Calculate DINO similarity score between anchor and target
         try:
+            # Load images
+            ref_img = Image.open(anchor_path).convert("RGB")
             gen_img = Image.open(target_path).convert("RGB")
-            g_feat = clip.img_feat(gen_img)
-            row["clip_i"] = float((a_feat @ g_feat).item())
-        except Exception:
-            row["notes"] = "target_open_or_feat_error"
+            
+            # Calculate DINO similarity score
+            dino_score = dino_scorer.calculate_dino_similarity(ref_img, gen_img)
+            row["dino_score"] = dino_score
+            dino_scores.append(dino_score)
+            
+        except Exception as e:
+            row["notes"] = "image_open_or_dino_error"
+        
         rows.append(row)
 
     # Save CSV
@@ -210,11 +229,11 @@ def main():
     # Statistics/Aggregation
     if not df.empty:
         print("[DEBUG] notes counts:", dict(Counter(df["notes"].fillna(""))))
-        if df["clip_i"].notna().any():
-            s = df["clip_i"].dropna()
-            print(f"[STAT] count={len(s)}, mean={s.mean():.6f}, min={s.min():.6f}, max={s.max():.6f}")
+        if dino_scores:
+            dino_array = np.array(dino_scores)
+            print(f"\n[DINO STATS] count={len(dino_scores)}, mean={dino_array.mean():.6f}, min={dino_array.min():.6f}, max={dino_array.max():.6f}, std={dino_array.std():.6f}")
         else:
-            print("[STAT] No valid CLIP values.")
+            print("[STAT] No valid DINO scores calculated.")
     else:
         print("[DEBUG] No target folders to evaluate, empty CSV generated.")
 

@@ -1,9 +1,9 @@
 
 """
-CLIP image-image similarity:
+FID score computation:
 - <target-folder>  vs  FFHQ/{bucket}/{id5}.{ext}
 
-Usage: python CLIP_id.py
+Usage: python FID_id.py
 (Modify the hardcoded values in main() function as needed)
 """
 
@@ -18,7 +18,9 @@ from collections import Counter
 from tqdm import tqdm
 
 import torch
-import open_clip
+import torchvision.transforms as transforms
+from torchvision.models import inception_v3
+from scipy.linalg import sqrtm
 
 ID_ALPHA_RE = re.compile(r"^(\d{5})_([A-Za-z])")
 ALT_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".bmp"]
@@ -81,30 +83,56 @@ def resolve_target_image(folder: Path, target_name: Optional[str]) -> Optional[P
     imgs = sorted([q for q in folder.iterdir() if q.is_file() and q.suffix.lower() in ALT_EXTS])
     return imgs[0] if imgs else None
 
-class CLIPScorer:
-    def __init__(self, model_name: str, pretrained: str, device: str):
+class FIDScorer:
+    def __init__(self, device: str):
         self.device = torch.device("cuda" if (device == "cuda" and torch.cuda.is_available()) else "cpu")
-        self.model, _, self.preprocess = open_clip.create_model_and_transforms(
-            model_name, pretrained=pretrained, device=self.device
-        )
+        self.model = inception_v3(pretrained=True, transform_input=False).to(self.device)
         self.model.eval()
+        
+        # Remove the final classification layer
+        self.model.fc = torch.nn.Identity()
+        
+        self.preprocess = transforms.Compose([
+            transforms.Resize((299, 299)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
 
     @torch.inference_mode()
     def img_feat(self, img: Image.Image) -> torch.Tensor:
         x = self.preprocess(img).unsqueeze(0).to(self.device)
-        f = self.model.encode_image(x)
-        f = f / f.norm(dim=-1, keepdim=True)
+        f = self.model(x)
         return f.squeeze(0)
+    
+    def calculate_fid(self, real_features, fake_features):
+        """
+        Calculate FID score between two sets of features
+        """
+        # Convert to numpy
+        real_features = real_features.cpu().numpy()
+        fake_features = fake_features.cpu().numpy()
+        
+        # Calculate means and covariances
+        mu1, sigma1 = real_features.mean(axis=0), np.cov(real_features, rowvar=False)
+        mu2, sigma2 = fake_features.mean(axis=0), np.cov(fake_features, rowvar=False)
+        
+        # Calculate FID
+        diff = mu1 - mu2
+        covmean, _ = sqrtm(sigma1.dot(sigma2), disp=False)
+        
+        if np.iscomplexobj(covmean):
+            covmean = covmean.real
+            
+        fid = diff.dot(diff) + np.trace(sigma1) + np.trace(sigma2) - 2 * np.trace(covmean)
+        return fid
 
 def main():
     # Hardcoded values - modify these as needed
-    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_6"
-    out_file = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/csv/CLIP_ID_infer6.csv"
+    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_7"
+    out_file = "/data2/jiyoon/custom/results/final/metric/FID_ID/FID_ID_infer7.csv"
     ffhq_root_path = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/ffhq_face"
     bucket_size = 1000
     target_name = ""
-    clip_model = "ViT-L-14"
-    clip_pretrained = "openai"
     device = "cuda"
 
     root_dir = Path(target_folder)
@@ -112,9 +140,13 @@ def main():
     assert root_dir.is_dir(), f"target-folder path is not a directory: {root_dir}"
     assert ffhq_root.is_dir(), f"FFHQ root does not exist: {ffhq_root}"
 
-    clip = CLIPScorer(clip_model, clip_pretrained, device)
-    print(f"[INFO] device={clip.device}, model={clip_model}:{clip_pretrained}")
+    fid_scorer = FIDScorer(device)
+    print(f"[INFO] device={fid_scorer.device}, model=InceptionV3")
     print(f"[INFO] target_folder={root_dir} | ffhq_root={ffhq_root} | bucket_size={bucket_size} | target_name={target_name or '(auto)'}")
+    
+    # Collect all features for FID calculation
+    real_features = []
+    fake_features = []
 
     rows: List[Dict] = []
     
@@ -149,7 +181,7 @@ def main():
                 "id5": id5,
                 "anchor_path": "",
                 "target_path": "",
-                "clip_i": np.nan,
+                "fid_score": np.nan,
                 "notes": ""
             }
             
@@ -170,7 +202,7 @@ def main():
                 "id5": id5,
                 "anchor_path": "",
                 "target_path": str(item),
-                "clip_i": np.nan,
+                "fid_score": np.nan,
                 "notes": ""
             }
             target_path = item
@@ -181,24 +213,34 @@ def main():
             row["notes"] = "anchor_missing"; rows.append(row); continue
         row["anchor_path"] = str(anchor_path)
 
-        # Anchor embedding
-        if id5 not in anchor_feat_cache:
-            try:
-                ref_img = Image.open(anchor_path).convert("RGB")
-                anchor_feat_cache[id5] = clip.img_feat(ref_img)
-            except Exception:
-                anchor_feat_cache[id5] = None
-        a_feat = anchor_feat_cache[id5]
-        if a_feat is None:
-            row["notes"] = "anchor_open_or_feat_error"; rows.append(row); continue
-
-        # Target embedding and similarity
+        # Extract features for FID calculation
         try:
+            # Anchor image features
+            if id5 not in anchor_feat_cache:
+                try:
+                    ref_img = Image.open(anchor_path).convert("RGB")
+                    anchor_feat_cache[id5] = fid_scorer.img_feat(ref_img)
+                except Exception:
+                    anchor_feat_cache[id5] = None
+            
+            a_feat = anchor_feat_cache[id5]
+            if a_feat is None:
+                row["notes"] = "anchor_open_or_feat_error"; rows.append(row); continue
+            
+            # Target image features
             gen_img = Image.open(target_path).convert("RGB")
-            g_feat = clip.img_feat(gen_img)
-            row["clip_i"] = float((a_feat @ g_feat).item())
-        except Exception:
+            g_feat = fid_scorer.img_feat(gen_img)
+            
+            # Store features for later FID calculation
+            real_features.append(a_feat)
+            fake_features.append(g_feat)
+            
+            # For now, store individual pair for tracking
+            row["fid_score"] = 0.0  # Will be computed globally later
+            
+        except Exception as e:
             row["notes"] = "target_open_or_feat_error"
+        
         rows.append(row)
 
     # Save CSV
@@ -207,14 +249,25 @@ def main():
     df.to_csv(out, index=False)
     print(f"\n[DONE] saved: {out.resolve()}")
 
+    # Calculate overall FID score
+    if real_features and fake_features:
+        real_features_tensor = torch.stack(real_features)
+        fake_features_tensor = torch.stack(fake_features)
+        
+        overall_fid = fid_scorer.calculate_fid(real_features_tensor, fake_features_tensor)
+        print(f"\n[FID SCORE] Overall FID: {overall_fid:.6f}")
+        
+        # Update dataframe with overall FID (for reference)
+        if not df.empty:
+            df.loc[df["fid_score"] == 0.0, "fid_score"] = overall_fid
+    
     # Statistics/Aggregation
     if not df.empty:
         print("[DEBUG] notes counts:", dict(Counter(df["notes"].fillna(""))))
-        if df["clip_i"].notna().any():
-            s = df["clip_i"].dropna()
-            print(f"[STAT] count={len(s)}, mean={s.mean():.6f}, min={s.min():.6f}, max={s.max():.6f}")
-        else:
-            print("[STAT] No valid CLIP values.")
+        valid_pairs = len([f for f in real_features if f is not None])
+        print(f"[STAT] Valid image pairs processed: {valid_pairs}")
+        if valid_pairs == 0:
+            print("[STAT] No valid image pairs for FID calculation.")
     else:
         print("[DEBUG] No target folders to evaluate, empty CSV generated.")
 

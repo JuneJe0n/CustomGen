@@ -1,9 +1,9 @@
 
 """
-CLIP image-image similarity:
+LPIPS score computation:
 - <target-folder>  vs  FFHQ/{bucket}/{id5}.{ext}
 
-Usage: python CLIP_id.py
+Usage: python LPIPS_id.py
 (Modify the hardcoded values in main() function as needed)
 """
 
@@ -18,7 +18,8 @@ from collections import Counter
 from tqdm import tqdm
 
 import torch
-import open_clip
+import torchvision.transforms as transforms
+import lpips
 
 ID_ALPHA_RE = re.compile(r"^(\d{5})_([A-Za-z])")
 ALT_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".bmp"]
@@ -81,39 +82,48 @@ def resolve_target_image(folder: Path, target_name: Optional[str]) -> Optional[P
     imgs = sorted([q for q in folder.iterdir() if q.is_file() and q.suffix.lower() in ALT_EXTS])
     return imgs[0] if imgs else None
 
-class CLIPScorer:
-    def __init__(self, model_name: str, pretrained: str, device: str):
+class LPIPSScorer:
+    def __init__(self, device: str, net: str = 'alex'):
         self.device = torch.device("cuda" if (device == "cuda" and torch.cuda.is_available()) else "cpu")
-        self.model, _, self.preprocess = open_clip.create_model_and_transforms(
-            model_name, pretrained=pretrained, device=self.device
-        )
+        self.model = lpips.LPIPS(net=net).to(self.device)
         self.model.eval()
+        
+        self.preprocess = transforms.Compose([
+            transforms.Resize((256, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Normalize to [-1, 1]
+        ])
 
     @torch.inference_mode()
-    def img_feat(self, img: Image.Image) -> torch.Tensor:
-        x = self.preprocess(img).unsqueeze(0).to(self.device)
-        f = self.model.encode_image(x)
-        f = f / f.norm(dim=-1, keepdim=True)
-        return f.squeeze(0)
+    def calculate_lpips(self, img1: Image.Image, img2: Image.Image) -> float:
+        """
+        Calculate LPIPS score between two images
+        """
+        # Preprocess images
+        x1 = self.preprocess(img1).unsqueeze(0).to(self.device)
+        x2 = self.preprocess(img2).unsqueeze(0).to(self.device)
+        
+        # Calculate LPIPS distance
+        distance = self.model(x1, x2)
+        return float(distance.item())
 
 def main():
     # Hardcoded values - modify these as needed
-    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_6"
-    out_file = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/csv/CLIP_ID_infer6.csv"
+    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_7"
+    out_file = "/data2/jiyoon/custom/results/final/metric/LPIPS_ID/LPIPS_infer7.csv"
     ffhq_root_path = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/ffhq_face"
     bucket_size = 1000
     target_name = ""
-    clip_model = "ViT-L-14"
-    clip_pretrained = "openai"
     device = "cuda"
+    lpips_net = "alex"  # Options: 'alex', 'vgg', 'squeeze'
 
     root_dir = Path(target_folder)
     ffhq_root = Path(ffhq_root_path)
     assert root_dir.is_dir(), f"target-folder path is not a directory: {root_dir}"
     assert ffhq_root.is_dir(), f"FFHQ root does not exist: {ffhq_root}"
 
-    clip = CLIPScorer(clip_model, clip_pretrained, device)
-    print(f"[INFO] device={clip.device}, model={clip_model}:{clip_pretrained}")
+    lpips_scorer = LPIPSScorer(device, lpips_net)
+    print(f"[INFO] device={lpips_scorer.device}, model=LPIPS-{lpips_net}")
     print(f"[INFO] target_folder={root_dir} | ffhq_root={ffhq_root} | bucket_size={bucket_size} | target_name={target_name or '(auto)'}")
 
     rows: List[Dict] = []
@@ -133,8 +143,8 @@ def main():
         items_to_process = all_files
         process_mode = "files"
 
-    # Anchor embedding cache (to handle duplicate id5s)
-    anchor_feat_cache: Dict[str, Optional[torch.Tensor]] = {}
+    # Store LPIPS scores for statistics
+    lpips_scores = []
 
     for item in tqdm(items_to_process, desc="Evaluating", ncols=100):
         if process_mode == "subdirs":
@@ -149,7 +159,7 @@ def main():
                 "id5": id5,
                 "anchor_path": "",
                 "target_path": "",
-                "clip_i": np.nan,
+                "lpips_score": np.nan,
                 "notes": ""
             }
             
@@ -170,7 +180,7 @@ def main():
                 "id5": id5,
                 "anchor_path": "",
                 "target_path": str(item),
-                "clip_i": np.nan,
+                "lpips_score": np.nan,
                 "notes": ""
             }
             target_path = item
@@ -181,24 +191,20 @@ def main():
             row["notes"] = "anchor_missing"; rows.append(row); continue
         row["anchor_path"] = str(anchor_path)
 
-        # Anchor embedding
-        if id5 not in anchor_feat_cache:
-            try:
-                ref_img = Image.open(anchor_path).convert("RGB")
-                anchor_feat_cache[id5] = clip.img_feat(ref_img)
-            except Exception:
-                anchor_feat_cache[id5] = None
-        a_feat = anchor_feat_cache[id5]
-        if a_feat is None:
-            row["notes"] = "anchor_open_or_feat_error"; rows.append(row); continue
-
-        # Target embedding and similarity
+        # Calculate LPIPS score between anchor and target
         try:
+            # Load images
+            ref_img = Image.open(anchor_path).convert("RGB")
             gen_img = Image.open(target_path).convert("RGB")
-            g_feat = clip.img_feat(gen_img)
-            row["clip_i"] = float((a_feat @ g_feat).item())
-        except Exception:
-            row["notes"] = "target_open_or_feat_error"
+            
+            # Calculate LPIPS score
+            lpips_score = lpips_scorer.calculate_lpips(ref_img, gen_img)
+            row["lpips_score"] = lpips_score
+            lpips_scores.append(lpips_score)
+            
+        except Exception as e:
+            row["notes"] = "image_open_or_lpips_error"
+        
         rows.append(row)
 
     # Save CSV
@@ -210,11 +216,11 @@ def main():
     # Statistics/Aggregation
     if not df.empty:
         print("[DEBUG] notes counts:", dict(Counter(df["notes"].fillna(""))))
-        if df["clip_i"].notna().any():
-            s = df["clip_i"].dropna()
-            print(f"[STAT] count={len(s)}, mean={s.mean():.6f}, min={s.min():.6f}, max={s.max():.6f}")
+        if lpips_scores:
+            lpips_array = np.array(lpips_scores)
+            print(f"\n[LPIPS STATS] count={len(lpips_scores)}, mean={lpips_array.mean():.6f}, min={lpips_array.min():.6f}, max={lpips_array.max():.6f}, std={lpips_array.std():.6f}")
         else:
-            print("[STAT] No valid CLIP values.")
+            print("[STAT] No valid LPIPS scores calculated.")
     else:
         print("[DEBUG] No target folders to evaluate, empty CSV generated.")
 
