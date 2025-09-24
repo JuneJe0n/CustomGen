@@ -98,8 +98,8 @@ class CLIPScorer:
 
 def main():
     # Hardcoded values - modify these as needed
-    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_6"
-    out_file = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/csv/CLIP_ID_infer6.csv"
+    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/generated_face/infer_8"
+    out_file = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/csv/CLIP_ID_infer8.csv"
     ffhq_root_path = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/ffhq_face"
     bucket_size = 1000
     target_name = ""

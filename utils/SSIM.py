@@ -111,8 +111,8 @@ class SSIMScorer:
 
 def main():
     # Hardcoded values - modify these as needed
-    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_7"
-    out_file = "/data2/jiyoon/custom/results/final/metric/SSIM/SSIM_infer7.csv"
+    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_8"
+    out_file = "/data2/jiyoon/custom/results/final/metric/SSIM/SSIM_infer8.csv"
     ffhq_root_path = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/ffhq_face"
     bucket_size = 1000
     target_name = ""

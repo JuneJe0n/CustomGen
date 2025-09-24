@@ -94,8 +94,8 @@ class ArtFIDScorer:
 
 def main():
     # Hardcoded values - modify these as needed
-    target_folder = "/data2/jiyoon/custom/results/final/infer_8"
-    out_file = "/data2/jiyoon/custom/results/final/metric/ArtFID/ArtFID_style_infer8.csv"
+    target_folder = "/data2/jiyoon/custom/results/final/infer_2"
+    out_file = "/data2/jiyoon/custom/results/final/metric/ArtFID/ArtFID_style_infer2.csv"
     style_root_path = "/data2/jiyoon/custom/data/ablation/style"
     device = "cuda"
 

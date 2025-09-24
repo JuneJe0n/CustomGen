@@ -1,234 +1,286 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-ArcFace: <target-folder>/<folder>/<image> vs FFHQ anchor
-- 폴더명 패턴: ^\\d{5}_[A-Za-z] ... (예: 00000_b_6_wikiart_011)  → id5=앞 5자리
-- 전체 폴더 평가
-- FFHQ 앵커: {ffhq_root}/{id5//bucket_size:05d}/{id5}.png(.jpg)
-- 생성 이미지:
-    * 기본: 해당 폴더 내 이미지 파일(확장자: png/jpg/jpeg/webp/bmp) 중 하나 자동 선택(사전순)
-    * 옵션: --target-name 로 이름 지정 가능 (확장자 생략 가능, prefix 매칭 지원)
-- 결과 CSV 저장 + 평균/최솟값/최댓값 출력
-"""
 
 """
-실행 명령어 예시
-python arcface.py \
---target-folder /data2/jiyoon/custom/results/final/infer_6 \
---out /data2/jiyoon/custom/results/final/metric/arcface_infer6.csv
+ArcFace similarity computation:
+- <target-folder>  vs  FFHQ/{bucket}/{id5}.{ext}
+
+Usage: python arface.py
+(Modify the hardcoded values in main() function as needed)
 """
 
-import argparse
 from pathlib import Path
 import re
 from typing import Optional, Dict, List
+
 import numpy as np
 import pandas as pd
 from PIL import Image
-import cv2
-import onnxruntime as ort
-from insightface.app import FaceAnalysis
+from collections import Counter
+from tqdm import tqdm
 
-ID_ALPHA_RE = re.compile(r"^(\d{5})_([A-Za-z])")  # 앞 5자리 + '_' + 알파벳
+import torch
+import torch.nn as nn
+import torchvision.transforms as transforms
+from torch.nn import functional as F
+
+ID_ALPHA_RE = re.compile(r"^(\d{5})_([A-Za-z])")
 ALT_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".bmp"]
+ANCHOR_EXTS = [".png", ".jpg", ".jpeg"] 
 
-def has_cuda_provider() -> bool:
-    try:
-        return "CUDAExecutionProvider" in ort.get_available_providers()
-    except Exception:
-        return False
-
-def bgr_from_pil(img: Image.Image) -> np.ndarray:
-    arr = np.array(img.convert("RGB"))
-    return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
-
-def select_largest_face(faces):
-    if not faces:
-        return None
-    areas = [max(1, int((f.bbox[2]-f.bbox[0])*(f.bbox[3]-f.bbox[1]))) for f in faces]
-    return faces[int(np.argmax(areas))]
-
-def init_face_app(use_gpu: bool, det_size: int) -> FaceAnalysis:
-    providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if use_gpu else ["CPUExecutionProvider"]
-    app = FaceAnalysis(name="buffalo_l", providers=providers)
-    app.prepare(ctx_id=0 if use_gpu else -1, det_size=(det_size, det_size))
-    return app
-
-def load_anchor_embedding(app: FaceAnalysis, anchor_path: Path) -> Optional[np.ndarray]:
-    try:
-        img = Image.open(anchor_path).convert("RGB")
-    except Exception:
-        return None
-    faces = app.get(bgr_from_pil(img))
-    face = select_largest_face(faces)
-    if face is None or face.normed_embedding is None:
-        return None
-    return face.normed_embedding.astype(np.float32)  # L2-normalized
-
-def best_sim_against_anchor(app: FaceAnalysis, img_path: Path, anchor: np.ndarray) -> Optional[float]:
-    try:
-        img = Image.open(img_path).convert("RGB")
-    except Exception:
-        return None
-    faces = app.get(bgr_from_pil(img))
-    if not faces:
-        return None
-    sims = []
-    for f in faces:
-        if f.normed_embedding is None:
-            continue
-        emb = f.normed_embedding.astype(np.float32)  # L2-normalized
-        sims.append(float(np.dot(anchor, emb)))      # cosine == dot
-    return max(sims) if sims else None
-
-def resolve_ffhq_anchor(ffhq_root: Path, id5: str, bucket_size: int) -> Optional[Path]:
+def resolve_ffhq_anchor(ffhq_root: Path, id5: str, bucket_size: int, recursive_fallback: bool = False) -> Optional[Path]:
+    """
+    Find FFHQ anchor image.
+    Priority:
+      1) Bucket layout ({id5//bucket_size:05d}/{id5}.{ext})
+      2) Flat layout ({ffhq_root}/{id5}.{ext})
+      3) (Optional) Recursive rglb search
+    """
     idx = int(id5)
-    folder = f"{idx // bucket_size:05d}"
-    png = ffhq_root / folder / f"{id5}.png"
-    if png.exists():
-        return png
-    jpg = ffhq_root / folder / f"{id5}.jpg"
-    if jpg.exists():
-        return jpg
+
+    # 1) Specified bucket layout
+    if bucket_size and bucket_size > 0:
+        folder = f"{idx // bucket_size:05d}"
+        for ext in ANCHOR_EXTS:
+            p = ffhq_root / folder / f"{id5}{ext}"
+            if p.exists():
+                return p
+
+    # 2) Flat layout
+    for ext in ANCHOR_EXTS:
+        p = ffhq_root / f"{id5}{ext}"
+        if p.exists():
+            return p
+
+    # 3) (Optional) Recursive search - disabled by default as it can be slow
+    if recursive_fallback:
+        for ext in ANCHOR_EXTS:
+            hits = list(ffhq_root.rglob(f"{id5}{ext}"))
+            if hits:
+                return hits[0]
+
     return None
 
 def resolve_target_image(folder: Path, target_name: Optional[str]) -> Optional[Path]:
-    """
-    - target_name이 주어지면:
-        1) 확장자 포함 시 그 파일 검사
-        2) 확장자 미포함 시 ALT_EXTS 순회해 존재하면 반환
-        3) prefix 매칭 (예: name -> name*, 이미지 확장자)
-    - target_name이 없으면:
-        폴더 내 ALT_EXTS 파일들을 사전순 정렬 후 첫 번째 반환
-    """
     if target_name:
         base = target_name.strip()
-        # 확장자 포함
+        # With extension
         if Path(base).suffix:
             p = folder / base
             if p.exists():
                 return p
         else:
-            # 확장자 미포함 → 후보 탐색
+            # Without extension
             for ext in ALT_EXTS:
                 p = folder / f"{base}{ext}"
                 if p.exists():
                     return p
-        # prefix 매칭
+        # Prefix matching
         cands = sorted([q for q in folder.glob(f"{base}*") if q.suffix.lower() in ALT_EXTS])
         if cands:
             return cands[0]
         return None
 
-    # 자동 선택: 폴더 내 이미지 한 장 선택(사전순)
+    # Auto selection
     imgs = sorted([q for q in folder.iterdir() if q.is_file() and q.suffix.lower() in ALT_EXTS])
     return imgs[0] if imgs else None
 
-def main():
-    ap = argparse.ArgumentParser(description="ArcFace vs FFHQ anchor (no alpha filter; auto-target)")
-    ap.add_argument("--target-folder",
-                    required=True,
-                    help="생성 이미지 루트(직계 하위 폴더 순회)")
-    ap.add_argument("--ffhq-root", default="/data2/jeesoo/FFHQ", help="FFHQ 루트 경로")
-    ap.add_argument("--bucket-size", type=int, default=1000, help="FFHQ 버킷 크기(기본 1000)")
-    ap.add_argument("--target-name", default="", help="폴더 내에서 사용할 이미지 이름(옵션). 미지정 시 자동 선택")
-    ap.add_argument("--det-size", type=int, default=640, help="얼굴 검출 해상도 한변")
-    ap.add_argument("--cpu", action="store_true", help="GPU 대신 CPU 사용(onnxruntime)")
-    ap.add_argument("--out", default="arcface_all.csv", help="결과 CSV 경로")
-    args = ap.parse_args()
-
-    root_dir = Path(args.target_folder); ffhq_root = Path(args.ffhq_root)
-    assert root_dir.is_dir(), f"--target-folder 경로가 폴더가 아닙니다: {root_dir}"
-    assert ffhq_root.is_dir(), f"FFHQ 루트가 없습니다: {ffhq_root}"
-
-    use_gpu = (not args.cpu) and has_cuda_provider()
-    app = init_face_app(use_gpu, args.det_size)
-    print(f"[INFO] providers={'GPU' if use_gpu else 'CPU'} | det_size={args.det_size}")
-    print(f"[INFO] target_folder={root_dir} | ffhq_root={ffhq_root} | target_name={args.target_name or '(auto)'}")
-
-    anchor_cache: Dict[str, Optional[np.ndarray]] = {}
-    rows: List[Dict] = []
-
-    # Check if we have subdirectories or direct files
-    subdirs = sorted([p for p in root_dir.iterdir() if p.is_dir()])
-    direct_files = sorted([p for p in root_dir.iterdir() if p.is_file() and p.suffix.lower() in ALT_EXTS])
-    
-    if subdirs:
-        print(f"[INFO] total_subdirs={len(subdirs)}")
-        items_to_process = [(sub, sub.name, sub) for sub in subdirs]
-    elif direct_files:
-        print(f"[INFO] total_files={len(direct_files)}")
-        items_to_process = [(f, f.name, root_dir) for f in direct_files]
-    else:
-        print(f"[INFO] No subdirs or direct image files found")
-        items_to_process = []
-
-    for item, item_name, target_dir in items_to_process:
-        m = ID_ALPHA_RE.match(item_name)
-        if not m:
-            # 파일/폴더명에서 id5를 추출할 수 없으면 스킵
-            continue
-
-        id5 = m.group(1)
-
-        row = {
-            "folder": item_name,
-            "id5": id5,
-            "anchor_path": "",
-            "target_path": "",
-            "arcface": np.nan,
-            "notes": ""
-        }
-
-        # 타겟 이미지 결정
-        if item.is_file():
-            # Direct file case
-            target_path = item
-        else:
-            # Subdirectory case
-            target_path = resolve_target_image(target_dir, args.target_name if args.target_name else None)
+class ArcFaceScorer:
+    def __init__(self, device: str, model_path: str = None):
+        self.device = torch.device("cuda" if (device == "cuda" and torch.cuda.is_available()) else "cpu")
         
-        if not target_path:
-            row["notes"] = "target_missing"
-            rows.append(row); continue
-        row["target_path"] = str(target_path)
+        # Load ArcFace model - you may need to adjust this based on your model
+        # This is a placeholder - replace with actual ArcFace model loading
+        from torchvision.models import resnet50
+        self.backbone = resnet50(pretrained=True)
+        self.backbone.fc = nn.Linear(2048, 512)  # ArcFace embedding dimension
+        self.backbone = self.backbone.to(self.device)
+        self.backbone.eval()
+        
+        # If you have a pretrained ArcFace model, load it here
+        if model_path and Path(model_path).exists():
+            self.backbone.load_state_dict(torch.load(model_path, map_location=self.device))
+        
+        self.preprocess = transforms.Compose([
+            transforms.Resize((112, 112)),  # Standard ArcFace input size
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # [-1, 1] normalization
+        ])
 
-        # 앵커 이미지 결정
-        anchor_path = resolve_ffhq_anchor(ffhq_root, id5, args.bucket_size)
+    @torch.inference_mode()
+    def img_feat(self, img: Image.Image) -> torch.Tensor:
+        x = self.preprocess(img).unsqueeze(0).to(self.device)
+        embedding = self.backbone(x)
+        # L2 normalize the embedding for cosine similarity
+        embedding = F.normalize(embedding, p=2, dim=1)
+        return embedding.squeeze(0)
+    
+    def calculate_cosine_similarity(self, anchor_embedding, target_embedding):
+        """
+        Calculate cosine similarity between two embeddings
+        """
+        # Both embeddings are already L2 normalized, so dot product gives cosine similarity
+        similarity = torch.dot(anchor_embedding, target_embedding).item()
+        return similarity
+    
+    def calculate_average_similarity(self, real_embeddings, fake_embeddings):
+        """
+        Calculate average cosine similarity across all pairs
+        """
+        if len(real_embeddings) != len(fake_embeddings):
+            raise ValueError("Number of real and fake embeddings must match")
+        
+        similarities = []
+        for real_emb, fake_emb in zip(real_embeddings, fake_embeddings):
+            sim = self.calculate_cosine_similarity(real_emb, fake_emb)
+            similarities.append(sim)
+        
+        return np.mean(similarities)
+
+def main():
+    # Hardcoded values - modify these as needed
+    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_6"
+    out_file = "/data2/jiyoon/custom/results/final/metric/arcface/ArcFace_ID_infer6.csv"
+    ffhq_root_path = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/ffhq_face"
+    bucket_size = 1000
+    target_name = ""
+    device = "cuda"
+    arcface_model_path = None  # Path to pretrained ArcFace model (optional)
+
+    root_dir = Path(target_folder)
+    ffhq_root = Path(ffhq_root_path)
+    assert root_dir.is_dir(), f"target-folder path is not a directory: {root_dir}"
+    assert ffhq_root.is_dir(), f"FFHQ root does not exist: {ffhq_root}"
+
+    arcface_scorer = ArcFaceScorer(device, arcface_model_path)
+    print(f"[INFO] device={arcface_scorer.device}, model=ArcFace-ResNet50")
+    print(f"[INFO] target_folder={root_dir} | ffhq_root={ffhq_root} | bucket_size={bucket_size} | target_name={target_name or '(auto)'}")
+    
+    # Collect all embeddings for similarity calculation
+    anchor_embeddings = []
+    target_embeddings = []
+
+    rows: List[Dict] = []
+    
+    # Check if we have subdirectories or individual files
+    all_dirs = sorted([p for p in root_dir.iterdir() if p.is_dir()])
+    all_files = sorted([p for p in root_dir.iterdir() if p.is_file() and p.suffix.lower() in ALT_EXTS])
+    
+    if all_dirs:
+        # Original behavior: process subdirectories
+        print(f"[INFO] total_subdirs={len(all_dirs)}")
+        items_to_process = all_dirs
+        process_mode = "subdirs"
+    else:
+        # New behavior: process individual files
+        print(f"[INFO] total_files={len(all_files)}")
+        items_to_process = all_files
+        process_mode = "files"
+
+    # Anchor embedding cache (to handle duplicate id5s)
+    anchor_feat_cache: Dict[str, Optional[torch.Tensor]] = {}
+
+    for item in tqdm(items_to_process, desc="Evaluating", ncols=100):
+        if process_mode == "subdirs":
+            # Original logic for subdirectories
+            m = ID_ALPHA_RE.match(item.name)
+            if not m:
+                continue
+            id5 = m.group(1)
+            
+            row = {
+                "folder": item.name,
+                "id5": id5,
+                "anchor_path": "",
+                "target_path": "",
+                "arcface_similarity": np.nan,
+                "notes": ""
+            }
+            
+            # Target image
+            target_path = resolve_target_image(item, target_name or None)
+            if not target_path:
+                row["notes"] = "target_missing"; rows.append(row); continue
+            row["target_path"] = str(target_path)
+        else:
+            # New logic for individual files
+            m = ID_ALPHA_RE.match(item.name)
+            if not m:
+                continue
+            id5 = m.group(1)
+            
+            row = {
+                "folder": item.name,
+                "id5": id5,
+                "anchor_path": "",
+                "target_path": str(item),
+                "arcface_similarity": np.nan,
+                "notes": ""
+            }
+            target_path = item
+
+        # Anchor image
+        anchor_path = resolve_ffhq_anchor(ffhq_root, id5, bucket_size, recursive_fallback=False)
         if not anchor_path:
-            row["notes"] = "anchor_missing"
-            rows.append(row); continue
+            row["notes"] = "anchor_missing"; rows.append(row); continue
         row["anchor_path"] = str(anchor_path)
 
-        # 앵커 임베딩 캐시
-        key = str(anchor_path)
-        if key not in anchor_cache:
-            anchor_cache[key] = load_anchor_embedding(app, anchor_path)
-        anchor = anchor_cache[key]
-        if anchor is None:
-            row["notes"] = "anchor_no_face"
-            rows.append(row); continue
-
-        # 유사도
-        sim = best_sim_against_anchor(app, target_path, anchor)
-        if sim is None:
-            row["notes"] = "gen_no_face"
-        else:
-            row["arcface"] = sim
+        # Extract embeddings for ArcFace similarity calculation
+        try:
+            # Anchor image embedding
+            if id5 not in anchor_feat_cache:
+                try:
+                    ref_img = Image.open(anchor_path).convert("RGB")
+                    anchor_feat_cache[id5] = arcface_scorer.img_feat(ref_img)
+                except Exception:
+                    anchor_feat_cache[id5] = None
+            
+            a_emb = anchor_feat_cache[id5]
+            if a_emb is None:
+                row["notes"] = "anchor_open_or_feat_error"; rows.append(row); continue
+            
+            # Target image embedding
+            gen_img = Image.open(target_path).convert("RGB")
+            g_emb = arcface_scorer.img_feat(gen_img)
+            
+            # Calculate cosine similarity between the two embeddings
+            similarity = arcface_scorer.calculate_cosine_similarity(a_emb, g_emb)
+            row["arcface_similarity"] = similarity
+            
+            # Store embeddings for average calculation
+            anchor_embeddings.append(a_emb)
+            target_embeddings.append(g_emb)
+            
+        except Exception as e:
+            row["notes"] = "target_open_or_feat_error"
+        
         rows.append(row)
 
-    # CSV 저장
+    # Save CSV
     df = pd.DataFrame(rows)
-    out = Path(args.out)
+    out = Path(out_file)
     df.to_csv(out, index=False)
     print(f"\n[DONE] saved: {out.resolve()}")
 
-    # 통계
-    if not df.empty and df["arcface"].notna().any():
-        s = df["arcface"].dropna()
-        print(f"[STAT] count={len(s)}, mean={s.mean():.6f}, min={s.min():.6f}, max={s.max():.6f}")
+    # Calculate overall average similarity
+    if anchor_embeddings and target_embeddings:
+        overall_avg_similarity = arcface_scorer.calculate_average_similarity(anchor_embeddings, target_embeddings)
+        print(f"\n[ARCFACE SIMILARITY] Average similarity: {overall_avg_similarity:.6f}")
+        
+        # Calculate individual statistics
+        valid_similarities = [row["arcface_similarity"] for row in rows if not np.isnan(row["arcface_similarity"])]
+        if valid_similarities:
+            min_sim = min(valid_similarities)
+            max_sim = max(valid_similarities)
+            print(f"[ARCFACE SIMILARITY] Min: {min_sim:.6f}, Max: {max_sim:.6f}")
+    
+    # Statistics/Aggregation
+    if not df.empty:
+        print("[DEBUG] notes counts:", dict(Counter(df["notes"].fillna(""))))
+        valid_pairs = len([emb for emb in anchor_embeddings if emb is not None])
+        print(f"[STAT] Valid image pairs processed: {valid_pairs}")
+        if valid_pairs == 0:
+            print("[STAT] No valid image pairs for similarity calculation.")
     else:
-        print("[STAT] 유효 ArcFace 값이 없습니다.")
+        print("[DEBUG] No target folders to evaluate, empty CSV generated.")
 
 if __name__ == "__main__":
     main()
