@@ -98,9 +98,9 @@ class CLIPScorer:
 
 def main():
     # Hardcoded values - modify these as needed
-    target_folder = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/generated_face/infer_8"
-    out_file = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/csv/CLIP_ID_infer8.csv"
-    ffhq_root_path = "/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet0/ffhq_face"
+    target_folder = "/data2/jiyoon/PAI-Bench/data/faceshape_change/orig"
+    out_file = "/data2/jiyoon/PAI-Bench/results/CLIP/faceshape_change.csv"
+    ffhq_root_path = "/data2/jiyoon/PAI-Bench/data/ffhq_50/orig"
     bucket_size = 1000
     target_name = ""
     clip_model = "ViT-L-14"

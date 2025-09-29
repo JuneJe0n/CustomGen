@@ -11,7 +11,7 @@ export CUDA_VISIBLE_DEVICES=1
 FACE_DIR="/data2/jiyoon/custom/data/ablation/face/baby"
 POSE_DIR="/data2/jiyoon/custom/data/ablation/pose/baby"
 STYLE_DIR="/data2/jiyoon/custom/data/ablation/style"
-OUTPUT_DIR="/data2/jiyoon/custom/results/final/infer_4"
+OUTPUT_DIR="/data2/jiyoon/custom/results/final/infer_1_inverse"
 
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
@@ -20,7 +20,7 @@ mkdir -p "$OUTPUT_DIR"
 counter=0
 total_combinations=0
 
-echo "Using GPU 5 (CUDA_VISIBLE_DEVICES=5)"
+echo "Using GPU 1 (CUDA_VISIBLE_DEVICES=1)"
 echo "Output directory: $OUTPUT_DIR"
 
 # Count total combinations first
@@ -100,9 +100,9 @@ for face_img in "$FACE_DIR"/*; do
                         echo "  Style: $style_basename"
                         
                         # Run the inference script with current combination
-                        echo "Running: python infer_5.py --face_img \"$face_img\" --pose_img \"$pose_img\" --style_img \"$style_img\" --output_path \"$output_path\""
+                        echo "Running: python infer_1_inverse.py --face_img \"$face_img\" --pose_img \"$pose_img\" --style_img \"$style_img\" --output_path \"$output_path\""
                         
-                        python infer_5.py \
+                        python infer_1_inverse.py \
                             --face_img "$face_img" \
                             --pose_img "$pose_img" \
                             --style_img "$style_img" \

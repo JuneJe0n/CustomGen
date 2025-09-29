@@ -15,8 +15,8 @@ from tqdm import tqdm
 
 def main():
     # Configuration
-    input_folder = Path("/data2/jiyoon/custom/results/final/infer_8") 
-    output_folder = Path("/data2/jiyoon/custom/results/final/metric/CLIP_ID_facedet1/generated_face/infer_8")  
+    input_folder = Path("/data2/jiyoon/PAI-Bench/data/faceshape_change/orig") 
+    output_folder = Path("/data2/jiyoon/PAI-Bench/data/faceshape_change/cropped")  
     
     # Create output directory
     output_folder.mkdir(parents=True, exist_ok=True)
