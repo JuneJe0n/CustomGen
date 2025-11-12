@@ -13,7 +13,7 @@ This repository contains official code implementation of "CustomGen: Towards Tra
 <h3>1) Clone the repository</h3>
 
 ```bash  
-git clone CustomGen
+git clone https://github.com/JuneJe0n/CustomGen.git
 cd CustomGen
 ```
 
