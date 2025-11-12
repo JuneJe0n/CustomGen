@@ -1,7 +1,4 @@
-"""
-8. ours (face mesh HED + face kps + pose kps)
-"""
-import argparse, cv2, torch, numpy as np
+import cv2, torch, numpy as np
 from pathlib import Path
 from PIL import Image
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
@@ -10,42 +7,52 @@ from controlnet_aux import OpenposeDetector, HEDdetector
 from insightface.app import FaceAnalysis
 from ip_adapter import IPAdapterXL
 import mediapipe as mp
-
-from config import NEG, CN_HED, CN_POSE, BASE_SDXL, STYLE_ENC, STYLE_IP, COND_HED, COND_POSE, STYLE_SCALE, CFG, STEPS, SEED
 from utils import *
 
+# --- Config ---
+NEG = "(lowres, bad quality, watermark,strange limbs)"
+CN_HED = "/data2/jiyoon/custom/ckpts/controlnet-union-sdxl-1.0"
+CN_POSE = "/data2/jiyoon/custom/ckpts/controlnet-openpose-sdxl-1.0"
+BASE_SDXL = "stabilityai/stable-diffusion-xl-base-1.0"
+STYLE_ENC = "/data2/jiyoon/IP-Adapter/sdxl_models/image_encoder"
+STYLE_IP = "/data2/jiyoon/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin"
+
+FACE_IMG = Path("/data2/jiyoon/custom/data/ablation/face/baby/00000.png")
+POSE_IMG = Path("/data2/jiyoon/custom/data/ablation/pose/baby/b_0.jpeg")
+STYLE_IMG = Path("/data2/jiyoon/custom/data/ablation/style/wikiart_021.jpg")
+OUTDIR = Path("/home/jiyoon/aaa")
+OUTDIR.mkdir(parents=True, exist_ok=True)
+
+
+COND_HED = 0.8
+COND_POSE = 0.85
+STYLE_SCALE = 0.8
+CFG, STEPS = 7.0, 50
+SEED = 4
+
 # --- Main ---
-def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_path: str, gpu_idx: int = 0):
-    # Set GPU - use cuda:0 when CUDA_VISIBLE_DEVICES is set, otherwise use specified gpu_idx
-    import os
-    if 'CUDA_VISIBLE_DEVICES' in os.environ:
-        DEVICE = "cuda:0"
-    else:
-        DEVICE = f"cuda:{gpu_idx}"
+def main():
+    # Set GPU
+    DEVICE = "cuda:0"
     DTYPE  = torch.float16
     torch.manual_seed(SEED)
 
-    # Load input imgs
-    face_im  = to_sdxl_res(load_rgb(face_img_path))
-    pose_im  = to_sdxl_res(load_rgb(pose_img_path))
-    style_pil = load_rgb(style_img_path)
-    # Set output path
-    final_output_path = Path(output_path)
-    # Create directory for intermediate files
-    output_dir = final_output_path.parent / final_output_path.stem
+    # Set path
+    face_im  = to_sdxl_res(load_rgb(str(FACE_IMG)))
+    pose_im  = to_sdxl_res(load_rgb(str(POSE_IMG)))
+    style_pil = load_rgb(str(STYLE_IMG))
+    output_dir = OUTDIR
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Generate prompt based on input images
-    from utils import PromptGenerator
+    # Generate prompt
     generator = PromptGenerator()
-    prompt = generator.generate_combined_prompt(face_img_path, pose_img_path)
+    prompt = generator.generate_combined_prompt(str(FACE_IMG), str(POSE_IMG))
     W, H = pose_im.size
 
 
     # --- bbox ---
     # Face detector
-    # Use device 0 when CUDA_VISIBLE_DEVICES is set, otherwise use gpu_idx
-    device_id = 0 if 'CUDA_VISIBLE_DEVICES' in os.environ else gpu_idx
+    device_id = 0
     face_det = FaceAnalysis(
         name="antelopev2",
         root="/data2/jiyoon/InstantID",
@@ -75,7 +82,6 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     pw, ph = x2 - x1, y2 - y1
 
 
-
     # --- Resize ---
     # Compute scale factor
     scale_w, scale_h = pw / fw, ph / fh
@@ -92,10 +98,8 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     face_crop_pil_resized = face_crop_pil.resize((new_w, new_h), Image.LANCZOS)
     face_crop_np = np.array(face_crop_pil_resized).astype(np.float32)
 
-
-
     # --- Mask ---
-    # Create face mask using FaceMesh polygon
+    # Create face mask
     poly_pts_scaled, poly_mask, poly_mask_3c = create_face_mask(face_crop_pil, fw, fh, scale, new_h, new_w)
 
     # Apply face mask on HED
@@ -113,17 +117,11 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     cv2.fillPoly(face_mask_full, [poly_pts_scaled + [start_x, start_y]], 1.0)
     face_mask_full = cv2.GaussianBlur(face_mask_full, (31,31), sigmaX=10, sigmaY=10)
     body_mask = (1.0 - face_mask_full).astype(np.float32)
-    to_mask_image(face_mask_full).save(output_dir/"3_face_mask_full.png")
-
-    # Apply body mask on pose img
+    to_mask_image(face_mask_full).save(output_dir/"0_aligned_face_mask.png")
     pose_np = np.array(pose_im).astype(np.float32)
-    pose_np_masked = (pose_np * body_mask[:,:,np.newaxis]).astype(np.float32)
-
-
 
 
     # --- Composite ---
-
     # Create composite: face crop in face region + pose img in body region
     pose_np = np.array(pose_im).astype(np.float32)
     
@@ -143,22 +141,21 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     integrated_canvas_np[start_y_clip:end_y_clip, start_x_clip:end_x_clip] += face_crop_np_masked[face_start_y:face_end_y, face_start_x:face_end_x]
     integrated_canvas_pil = Image.fromarray(integrated_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
 
-    integrated_canvas_pil.save(output_dir/ "5_integrated_canvas.png")
+    integrated_canvas_pil.save(output_dir/ "1_aligned_img.png")
     
-
 
     # --- kps ---
     # Openpose
     openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
     pose_openpose_pil = openpose(integrated_canvas_pil, hand_and_face=True).resize((W, H), Image.LANCZOS)
-    pose_openpose_pil.save(output_dir/ "7_pose_kps.png")
+    pose_openpose_pil.save(output_dir/ "2_aligned_kps.png")
     pose_openpose_np  = np.array(pose_openpose_pil).astype(np.float32) # openpose skeleton img
 
     # Insert face HED on pose img size empty canvas
     face_hed_canvas_np = np.zeros_like(pose_openpose_np, dtype=np.float32) # empty canvas of size pose
     face_hed_canvas_np[start_y:start_y+new_h, start_x:start_x+new_w] = face_hed_np_masked
     face_hed_canvas_pil = Image.fromarray(face_hed_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
-    face_hed_canvas_pil.save(output_dir/ "6_hed_aligned.png")
+    face_hed_canvas_pil.save(output_dir/ "3_aligned_hed.png")
     
     
     # --- Infer ---
@@ -170,7 +167,6 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
 
     images = [pose_openpose_pil,face_hed_canvas_pil]
     scales = [COND_POSE, COND_HED]
-    masks = [None,None]
 
 
     pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
@@ -192,7 +188,6 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
         guidance_scale=CFG,
         image=images,
         controlnet_conditioning_scale=scales,
-        control_mask=masks,
         generator=torch.Generator(device=DEVICE).manual_seed(SEED),
     )
 
@@ -213,32 +208,21 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     # Clear GPU memory
     del pipe
     torch.cuda.empty_cache()
-    out.save(output_dir/"8_final_result.png")
-    # Also save to the final output path
-    out.save(final_output_path)
-    print(f"✅ Saved final result to {final_output_path}")
+    out.save(output_dir/"4_final_result.png")
+    print(f"🥳 Saved results to {output_dir}")
     
     return True
 
 
-# --- CLI ---
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--face_img", type=str, required=True, help="Path to face image")
-    ap.add_argument("--pose_img", type=str, required=True, help="Path to pose image")
-    ap.add_argument("--style_img", type=str, required=True, help="Path to style image")
-    ap.add_argument("--output_path", type=str, required=True, help="Output path for final result")
-    ap.add_argument("--gpu", type=int, default=2, help="GPU index to use")
-    args = ap.parse_args()
-    
     try:
-        success = main(args.face_img, args.pose_img, args.style_img, args.output_path, args.gpu)
+        success = main()
         if success:
             exit(0)
         else:
             exit(1)
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
         exit(1)
