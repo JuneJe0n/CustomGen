@@ -1,6 +1,5 @@
 """
-Automatic prompt generation for method_6.py
-Generates prompts for face_im and pose_im using face and pose analysis utilities
+Prompt generator codes
 """
 import sys
 import os
@@ -101,10 +100,10 @@ class PromptGenerator:
     def generate_combined_prompt(self, face_img_path, pose_img_path):
 
         face_result_raw = self.analyze_image(face_img_path, FACE_PROMPT)
-        print(f"✅ Face prompt: {face_result_raw}")
+        print(f"👶🏻 Face prompt: {face_result_raw}")
         
         pose_result_raw = self.analyze_image(pose_img_path, POSE_PROMPT)
-        print(f"✅ Pose prompt: {pose_result_raw}")
+        print(f"🕺 Pose prompt: {pose_result_raw}")
         
         # Extract clean content
         face_result = self.extract_content(face_result_raw)
@@ -120,7 +119,7 @@ def main():
     from config import FACE_IMG, POSE_IMG
     generator = PromptGenerator()
     combined_prompt = generator.generate_combined_prompt(FACE_IMG, POSE_IMG)
-    print("✅ Automatic prompt generation completed!")
+    print("🎉 Automatic prompt generation completed!")
 
 if __name__ == "__main__":
     main()
