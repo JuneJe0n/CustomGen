@@ -12,11 +12,11 @@ from utils import *
 # --- Config ---
 NEG = "(lowres, bad quality, watermark,strange limbs)"
 
-CN_HED = "/data2/jiyoon/custom/ckpts/controlnet-union-sdxl-1.0"
-CN_POSE = "/data2/jiyoon/custom/ckpts/controlnet-openpose-sdxl-1.0"
 BASE_SDXL = "stabilityai/stable-diffusion-xl-base-1.0"
-STYLE_ENC = "/data2/jiyoon/IP-Adapter/sdxl_models/image_encoder"
-STYLE_IP = "/data2/jiyoon/IP-Adapter/sdxl_models/ip-adapter_sdxl.bin"
+CN_HED = "./models/controlnet-union-sdxl-1.0"
+CN_POSE = "./models/controlnet-openpose-sdxl-1.0"
+STYLE_ENC = "./models/IP-Adapter/image_encoder"
+STYLE_IP = "./models/IP-Adapter/ip-adapter_sdxl.bin"
 
 FACE_IMG = Path("/home/jiyoon/CustomGen/assets/face.png")
 POSE_IMG = Path("/home/jiyoon/CustomGen/assets/pose.jpeg")
@@ -56,7 +56,7 @@ def main():
     device_id = 0
     face_det = FaceAnalysis(
         name="antelopev2",
-        root="/data2/jiyoon/InstantID",
+        root="./models",
         providers=[('CUDAExecutionProvider', {'device_id': device_id}), 'CPUExecutionProvider']
     )
     face_det.prepare(ctx_id=device_id, det_size=(640, 640))
