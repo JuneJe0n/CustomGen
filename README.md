@@ -68,6 +68,9 @@ Ensure that the workspace is the root directory of the project. Then run:
 python infer.py
 ```
 
+<h2>Acknowledgements</h2>
+
+<h2>Disclaimer</h2>
 
 <h2>Citation</h2>
 If you find CustomGen useful for your research and applications, please cite us using this BibTeX:
