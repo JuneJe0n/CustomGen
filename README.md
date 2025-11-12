@@ -21,15 +21,23 @@ cd CustomGen
 
 Follow [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter?tab=readme-ov-file#download-models) to download pre-trained checkpoints from [here](https://huggingface.co/h94/IP-Adapter).
 
-```
+```bash
 git clone https://github.com/InstantStyle/InstantStyle.git
 cd InstantStyle
 
-# download the models
+# download models
 git lfs install
 git clone https://huggingface.co/h94/IP-Adapter
 mv IP-Adapter/sdxl_models models/IP-Adapter
 ```
+
+Then, run the following command to download necessary Controlnet and antelopev2 models:
+```bash
+python utils/download_models.py
+```
+
+
+
 
 
 <h3>3) Environment Setup</h3>
