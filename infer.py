@@ -210,7 +210,7 @@ def main():
     del pipe
     torch.cuda.empty_cache()
     out.save(output_dir/"4_final_result.png")
-    print(f"🥳 Saved results to {output_dir}")
+    print(f"🎉 Saved results to {output_dir}")
     
     return True
 
