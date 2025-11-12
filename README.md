@@ -17,7 +17,19 @@ git clone https://github.com/JuneJe0n/CustomGen.git
 cd CustomGen
 ```
 
-<h3>2) Download Models</h3>
+
+<h3>2) Environment Setup</h3>
+
+```bash
+conda create --name customgen python=3.8.10
+conda activate ConsistentID
+
+# Install requirements
+pip install -r requirements.txt
+```
+
+
+<h3>3) Download Models</h3>
 
 Follow [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter?tab=readme-ov-file#download-models) to download pre-trained checkpoints from [here](https://huggingface.co/h94/IP-Adapter).
 
@@ -39,16 +51,6 @@ python utils/download_models.py
 
 
 
-
-<h3>3) Environment Setup</h3>
-
-```bash
-conda create --name customgen python=3.8.10
-conda activate ConsistentID
-
-# Install requirements
-pip install -r requirements.txt
-```
 
 <h2>Usage</h2>
 
