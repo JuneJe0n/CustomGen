@@ -48,11 +48,26 @@ Then, run the following command to download necessary ControlNet and antelopev2 
 python utils/download_models.py
 ```
 
+Once you have prepared all models, the folder tree should be like:
+```
+  .
+  └── models
+	  ├── IP-Adapter
+	  ├── antelopev2
+	  ├── controlnet-union-sdxl-1.0	  
+	  └── controlnet-openpose-sdxl-1.0
+```
 
 
 
 
 <h2>Usage</h2>
+Ensure that the workspace is the root directory of the project. Then run:
+
+```bash
+python infer.py
+```
+
 
 <h2>Citation</h2>
 If you find CustomGen useful for your research and applications, please cite us using this BibTeX:
