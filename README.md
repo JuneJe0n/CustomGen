@@ -43,7 +43,7 @@ git clone https://huggingface.co/h94/IP-Adapter
 mv IP-Adapter/sdxl_models models/IP-Adapter
 ```
 
-Then, run the following command to download necessary Controlnet and antelopev2 models:
+Then, run the following command to download necessary ControlNet and antelopev2 models:
 ```bash
 python utils/download_models.py
 ```
