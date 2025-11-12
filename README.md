@@ -4,7 +4,7 @@
 
 This repository contains official code implementation of "CustomGen: Towards Training-Free Custom Generation". We provide the inference code reported in the paper.
 <p align="center">
-    <img src="./assets/figure_2.png"/ width="1000"><br>
+    <img src="./assets/comparison.png"/ width="1000"><br>
 </p>
 
 <h2>Abstract</h2>
