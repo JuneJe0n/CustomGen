@@ -8,6 +8,8 @@ This repository contains official code implementation of "CustomGen: Towards Tra
 </p>
 
 <h2>Abstract</h2>
+Fill in this part w abstract of paper
+
 
 <h2>Getting Started</h2>
 <h3>1) Clone the repository</h3>
