@@ -1,1 +1,2 @@
-# CustomGen: Towards Training-Free Custom Generation with Unified Multimodal Conditioning
+<h1 align="center"> CustomGen: Towards Training-Free Custom Generation <br>
+  with Unified Multimodal Conditioning </h1>
