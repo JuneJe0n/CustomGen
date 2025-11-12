@@ -4,6 +4,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class RegionControler(object):
+    def __init__(self) -> None:
+        self.prompt_image_conditioning = []
+region_control = RegionControler()
+
+
 class AttnProcessor(nn.Module):
     r"""
     Default processor for performing attention-related computations.

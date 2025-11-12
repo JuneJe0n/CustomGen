@@ -43,7 +43,7 @@ class PromptGenerator:
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             MODEL_ID, 
             torch_dtype="auto", 
-            device_map="auto" if torch.cuda.is_available() else None,
+            device_map="cuda" if torch.cuda.is_available() else None,
         )
         print("Model loaded successfully!")
 
