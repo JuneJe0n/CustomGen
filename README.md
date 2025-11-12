@@ -29,7 +29,7 @@ cd CustomGen
 
 ```bash
 conda create --name customgen python=3.8.10
-conda activate ConsistentID
+conda activate customgen
 
 # Install requirements
 pip install -r requirements.txt
