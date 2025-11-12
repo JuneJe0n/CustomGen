@@ -30,3 +30,5 @@ pip install -r requirements.txt
 ```
 
 <h2>Usage</h2>
+
+<h2>Citation</h2>
