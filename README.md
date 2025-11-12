@@ -28,8 +28,7 @@ cd InstantStyle
 # download the models
 git lfs install
 git clone https://huggingface.co/h94/IP-Adapter
-mv IP-Adapter/models models
-mv IP-Adapter/sdxl_models sdxl_models
+mv IP-Adapter/sdxl_models models/sdxl_models
 ```
 
 
