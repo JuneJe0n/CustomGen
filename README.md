@@ -2,7 +2,7 @@
   with Unified Multimodal Conditioning </h1>
 <h4 align="center"> If you like our project, please give us a star ⭐ on GitHub. </h4>
 
-This repository contains official code implementation of "CustomGen: Towards Training-Free Custom Generation". We provide the inference code reported in the paper.
+This repository contains the official code implementation of "CustomGen: Towards Training-Free Custom Generation". We provide the inference code reported in the paper.
 <p align="center">
     <img src="./assets/comparison.png"/ width="1100"><br>
 </p>
