@@ -56,7 +56,7 @@ def main():
     device_id = 0
     face_det = FaceAnalysis(
         name="antelopev2",
-        root="./models",
+        root="./",
         providers=[('CUDAExecutionProvider', {'device_id': device_id}), 'CPUExecutionProvider']
     )
     face_det.prepare(ctx_id=device_id, det_size=(640, 640))
