@@ -41,10 +41,6 @@ pip install -r requirements.txt
 Follow [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter?tab=readme-ov-file#download-models) to download pre-trained checkpoints from [here](https://huggingface.co/h94/IP-Adapter).
 
 ```bash
-git clone https://github.com/InstantStyle/InstantStyle.git
-cd InstantStyle
-
-# download models
 git lfs install
 git clone https://huggingface.co/h94/IP-Adapter
 mv IP-Adapter/sdxl_models models/IP-Adapter
