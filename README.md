@@ -11,7 +11,7 @@ This repository contains the official code implementation of "CustomGen: Towards
 <h2>Abstract</h2>
 Fill in this part w abstract of paper 
 <p align="center">
-    <img src="./assets/architecture.png"/ width="1100"><br>
+  <img src="https://raw.githubusercontent.com/JuneJe0n/CustomGen/master/assets/architecture.png" width="1100">
 </p>
 
 
