@@ -1,8 +1,6 @@
 <div align="center">
 <h1> CustomGen: <br>
 	Unified Multi-Condition Control for Diffusion Models </h1>
-	
-<h4> If you like our project, please give us a star ⭐ on GitHub. </h4>
 </div>
 
 This repository contains the official code implementation of "CustomGen: Towards Training-Free Custom Generation". We provide the inference code reported in the paper.
