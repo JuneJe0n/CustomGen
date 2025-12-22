@@ -1,5 +1,4 @@
-<h1 align="center"> CustomGen: A Training-Free Diffusion Framework <br>
-for Unified Identity, Style, and Pose Control </h1>
+<h1 align="center"> CustomGen: Unified Multi-Condition Control for Diffusion Models </h1>
 <h4 align="center"> If you like our project, please give us a star ⭐ on GitHub. </h4>
 
 This repository contains the official code implementation of "CustomGen: Towards Training-Free Custom Generation". We provide the inference code reported in the paper.
