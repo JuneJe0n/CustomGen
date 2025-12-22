@@ -8,7 +8,13 @@ This repository contains the official code implementation of "CustomGen: Towards
 
 
 <h2>Abstract</h2>
-Fill in this part w abstract of paper 
+
+Despite recent advances in diffusion-based image generation, existing approaches lack a unified framework that can simultaneously handle identity preservation, style transfer, pose control, and text guidance. To address this limitation, we propose CustomGen, a lightweight, training-free diffusion framework that unifies image-based control of identity, style, and pose with text guidance in a single generation process. 
+CustomGen is composed of three modules: a style extractor for image-based style injection, a prompt generator for effective textual guidance, and a face–pose aligner that fuses multiple ControlNet conditionings.
+Through extensive ablation studies, we systematically analyze the characteristics of different ControlNet conditions and derive meaningful insights into how each condition influences the generation process. 
+CustomGen adopts a modular Multi-ControlNet integration, remaining lightweight and plug-and-play across diverse diffusion-based models. 
+<br>
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/JuneJe0n/CustomGen/master/assets/architecture.png" width="1100">
 </p>
