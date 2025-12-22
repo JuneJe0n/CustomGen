@@ -1,5 +1,6 @@
 <div align="center">
-<h2> CustomGen: Unified Multi-Condition Control for Diffusion Models </h2>
+<h1> CustomGen: <br>
+	Unified Multi-Condition Control for Diffusion Models </h1>
 	
 <h4> If you like our project, please give us a star ⭐ on GitHub. </h4>
 </div>
