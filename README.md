@@ -34,11 +34,11 @@ cd CustomGen
 <h3>2) Environment Setup</h3>
 
 ```bash
-conda create --name customgen python=3.8.10
+conda create -n customgen python=3.11 -y
 conda activate customgen
 
 # Install requirements
-pip install -r requirements.txt
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
 ```
 
 
