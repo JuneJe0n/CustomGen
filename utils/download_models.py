@@ -29,6 +29,7 @@ hf_hub_download(
 
 
 # download antelopev2
-gdown.download(url="https://drive.google.com/file/d/18wEUfMNohBJ4K3Ly5wpTejPfDzp-8fI8/view?usp=sharing", output="./models/", quiet=False, fuzzy=True)
+gdown.download(url="https://drive.google.com/file/d/18wEUfMNohBJ4K3Ly5wpTejPfDzp-8fI8/view?usp=sharing", output="/data2/jiyoon/customgen/models/", quiet=False, fuzzy=True)
+
 # unzip antelopev2.zip
-os.system("unzip /data2/jiyoon/customgen/models/antelopev2.zip -d ./models/")
+os.system("unzip /data2/jiyoon/customgen/models/antelopev2.zip -d /data2/jiyoon/customgen/models/")
