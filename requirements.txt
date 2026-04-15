@@ -1,5 +1,5 @@
-torch==2.5.1+cu121
-torchvision==0.20.1+cu121
+torch==2.5.1+cu124
+torchvision==0.20.1+cu124
 xformers==0.0.29.post1
 
 diffusers==0.35.1
