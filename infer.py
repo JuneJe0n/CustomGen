@@ -13,10 +13,10 @@ from utils import *
 NEG = "(lowres, bad quality, watermark,strange limbs)"
 
 BASE_SDXL = "stabilityai/stable-diffusion-xl-base-1.0"
-CN_HED = "./models/controlnet-union-sdxl-1.0"
-CN_POSE = "./models/controlnet-openpose-sdxl-1.0"
-STYLE_ENC = "./models/IP-Adapter/image_encoder"
-STYLE_IP = "./models/IP-Adapter/ip-adapter_sdxl.bin"
+CN_HED = "/data2/jiyoon/customgen/models/controlnet-union-sdxl-1.0"
+CN_POSE = "/data2/jiyoon/customgen/models/controlnet-openpose-sdxl-1.0"
+STYLE_ENC = "/data2/jiyoon/customgen/models/IP-Adapter/image_encoder"
+STYLE_IP = "/data2/jiyoon/customgen/models/IP-Adapter/ip-adapter_sdxl.bin"
 
 FACE_IMG = Path("/home/jiyoon/CustomGen/assets/face.png")
 POSE_IMG = Path("/home/jiyoon/CustomGen/assets/pose.jpeg")
