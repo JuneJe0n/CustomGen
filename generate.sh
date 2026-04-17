@@ -1,40 +1,40 @@
 #!/bin/bash
 
-# Activate conda environment
-source /home/jiyoon/.miniconda3/etc/profile.d/conda.sh
-conda activate instantstyle
+# --- SETTINGS ---
 
-# Set GPU to use (GPU 2 is free according to gpustat)
-export CUDA_VISIBLE_DEVICES=1
+# script to run for inference
+INFER_SCRIPT="b1.py"
 
-# Directories containing the images
-FACE_DIR="/data2/jiyoon/custom/data/ablation/face/baby"
-POSE_DIR="/data2/jiyoon/custom/data/ablation/pose/baby"
-STYLE_DIR="/data2/jiyoon/custom/data/ablation/style"
-OUTPUT_DIR="/data2/jiyoon/custom/results/final/infer_1_inverse"
+# set GPU to use
+export CUDA_VISIBLE_DEVICES=5
 
-# Create output directory if it doesn't exist
+# directories containing the images
+FACE_DIR="/data2/jiyoon/customgen/ref_imgs/face"
+POSE_DIR="/data2/jiyoon/customgen/ref_imgs/pose"
+STYLE_DIR="/data2/jiyoon/customgen/ref_imgs/style"
+OUTPUT_DIR="/data2/jiyoon/customgen/output"
+
+# create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
 
-# Counter for progress tracking
+
+# --- COUNT COMBINATIONS ---
+
+# counter for progress tracking
 counter=0
 total_combinations=0
 
-echo "Using GPU 1 (CUDA_VISIBLE_DEVICES=1)"
-echo "Output directory: $OUTPUT_DIR"
 
-# Count total combinations first
+echo "Output directory: $OUTPUT_DIR"
 echo "Counting total combinations..."
 
 # Check directories and count files
 echo "Checking face directory: $FACE_DIR"
 face_count=$(find "$FACE_DIR" -maxdepth 1 -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" \) 2>/dev/null | wc -l)
 echo "  Found $face_count face files"
-
 echo "Checking pose directory: $POSE_DIR"
 pose_count=$(find "$POSE_DIR" -maxdepth 1 -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" \) 2>/dev/null | wc -l)
 echo "  Found $pose_count pose files"
-
 echo "Checking style directory: $STYLE_DIR"
 style_count=$(find "$STYLE_DIR" -maxdepth 1 -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" \) 2>/dev/null | wc -l)
 echo "  Found $style_count style files"
@@ -52,6 +52,8 @@ if [[ $style_count -eq 0 ]]; then
     exit 1
 fi
 
+
+# calculate total combinations
 for face_img in "$FACE_DIR"/*; do
     if [[ -f "$face_img" ]]; then
         for pose_img in "$POSE_DIR"/*; do
@@ -69,6 +71,10 @@ done
 echo "Total combinations to generate: $total_combinations"
 echo "Starting generation..."
 echo ""
+
+
+
+# --- GENERATE ---
 
 # Generate all combinations
 for face_img in "$FACE_DIR"/*; do
@@ -100,9 +106,9 @@ for face_img in "$FACE_DIR"/*; do
                         echo "  Style: $style_basename"
                         
                         # Run the inference script with current combination
-                        echo "Running: python infer_1_inverse.py --face_img \"$face_img\" --pose_img \"$pose_img\" --style_img \"$style_img\" --output_path \"$output_path\""
+                        echo "Running: --face_img \"$face_img\" --pose_img \"$pose_img\" --style_img \"$style_img\" --output_path \"$output_path\""
                         
-                        python infer_1_inverse.py \
+                        python "$INFER_SCRIPT" \
                             --face_img "$face_img" \
                             --pose_img "$pose_img" \
                             --style_img "$style_img" \
