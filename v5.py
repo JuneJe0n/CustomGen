@@ -14,21 +14,36 @@ import mediapipe as mp
 from config import *
 from utils import *
 
+try:
+    SAVE_INTERMEDIATES
+except NameError:
+    SAVE_INTERMEDIATES = True
+
 # --- Main ---
-def main(gpu_idx: int):
+def main(face_img_path, pose_img_path, style_img_path, output_path, gpu_idx=0):
+    import os
     # Set GPU
-    DEVICE = f"cuda:{gpu_idx}"
+    DEVICE = "cuda:0" if "CUDA_VISIBLE_DEVICES" in os.environ else f"cuda:{gpu_idx}"
     DTYPE  = torch.float16
     torch.manual_seed(SEED)
 
+    # Set output path
+    final_path = Path(output_path)
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+
     # Load input imgs
-    face_im  = to_sdxl_res(load_rgb(FACE_IMG))
-    pose_im  = to_sdxl_res(load_rgb(POSE_IMG))
-    style_pil = load_rgb(STYLE_IMG)
-    face_im.save(OUTDIR/"0_face_input.png")
-    pose_im.save(OUTDIR/"1_pose_input.png")
-    style_pil.save(OUTDIR/"2_style_input.png")
+    face_im  = to_sdxl_res(load_rgb(face_img_path))
+    pose_im  = to_sdxl_res(load_rgb(pose_img_path))
+    style_pil = load_rgb(style_img_path)
+    if SAVE_INTERMEDIATES:
+        face_im.save(OUTDIR/"0_face_input.png")
+        pose_im.save(OUTDIR/"1_pose_input.png")
+        style_pil.save(OUTDIR/"2_style_input.png")
     W, H = pose_im.size
+
+    # Generate prompt
+    from utils import PromptGenerator
+    prompt = PromptGenerator().generate_combined_prompt(face_img_path, pose_img_path)
 
     # Face detector
     face_det = FaceAnalysis(
@@ -81,7 +96,7 @@ def main(gpu_idx: int):
     # Openpose
     openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
     pose_openpose_pil = openpose(pose_im, hand_and_face=True).resize((W, H), Image.LANCZOS)
-    pose_openpose_pil.save(OUTDIR / "3_pose_kps.png")
+    if SAVE_INTERMEDIATES: pose_openpose_pil.save(OUTDIR / "3_pose_kps.png")
     pose_openpose_np  = np.array(pose_openpose_pil).astype(np.float32) # openpose skeleton img
 
     
@@ -91,16 +106,17 @@ def main(gpu_idx: int):
     start_x, start_y = cx - new_w//2, cy - new_h//2
     face_hed_canvas_np[start_y:start_y+new_h, start_x:start_x+new_w] = face_hed_np_masked
     face_hed_canvas_pil = Image.fromarray(face_hed_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
-    face_hed_canvas_pil.save(OUTDIR / "4_hed_aligned.png")
- 
+    if SAVE_INTERMEDIATES: face_hed_canvas_pil.save(OUTDIR / "4_hed_aligned.png")
 
     # Body mask (Inverse of face mask)
     face_mask_full = np.zeros((H, W), dtype=np.float32)
     cv2.fillPoly(face_mask_full, [poly_pts_scaled + [start_x, start_y]], 1.0)
     face_mask_full = cv2.GaussianBlur(face_mask_full, (31,31), sigmaX=10, sigmaY=10)
-    to_mask_image(face_mask_full).save(OUTDIR/"5_face_mask_full.png")
+    if SAVE_INTERMEDIATES:
+        to_mask_image(face_mask_full).save(OUTDIR/"5_face_mask_full.png")
     body_mask = (1.0 - face_mask_full).astype(np.float32)
-    to_mask_image(body_mask).save(OUTDIR/"6_body_mask.png")
+    if SAVE_INTERMEDIATES:
+        to_mask_image(body_mask).save(OUTDIR/"6_body_mask.png")
 
 
     # ControlNet setup
@@ -127,7 +143,7 @@ def main(gpu_idx: int):
 
 
     gen_args = dict(
-        prompt=PROMPT,
+        prompt=prompt,
         negative_prompt=NEG,
         num_inference_steps=STEPS,
         guidance_scale=CFG,
@@ -151,13 +167,22 @@ def main(gpu_idx: int):
     )[0]
     del ip
     
-    out.save(OUTDIR/"7_final_result.png")
-    print(f"✅ Saved all intermediates in {OUTDIR}")
+    out.save(output_path)
+    if SAVE_INTERMEDIATES:
+        print(f"Intermediates saved in {OUTDIR}")
+    print(f"✅ Saved to {output_path}")
+    return True
 
 
 # --- CLI ---
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
+    ap.add_argument("--face_img", type=str, required=True)
+    ap.add_argument("--pose_img", type=str, required=True)
+    ap.add_argument("--style_img", type=str, required=True)
+    ap.add_argument("--output_path", type=str, required=True)
     ap.add_argument("--gpu", type=int, default=0)
     args = ap.parse_args()
-    main(args.gpu)
+    success = main(args.face_img, args.pose_img, args.style_img, args.output_path, args.gpu)
+    if not success:
+        exit(1)

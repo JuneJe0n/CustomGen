@@ -3,7 +3,7 @@
 # --- SETTINGS ---
 
 # script to run for inference
-INFER_SCRIPT="b1.py"
+INFER_SCRIPT="v4.py"
 
 # set GPU to use
 export CUDA_VISIBLE_DEVICES=5
