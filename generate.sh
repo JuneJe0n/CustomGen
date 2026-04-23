@@ -11,7 +11,7 @@ export CUDA_VISIBLE_DEVICES=4
 # verify CUDA is accessible before starting
 if ! python -c "import torch; assert torch.cuda.is_available(), 'No CUDA GPU found'" 2>/dev/null; then
     echo "ERROR: No CUDA GPU accessible. Check CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES or run on a GPU node."
-    nvidia-smi 2>/dev/null || echo "(nvidia-smi not found)"
+    nvidia-smi || echo "(nvidia-smi not found)"
     exit 1
 fi
 
