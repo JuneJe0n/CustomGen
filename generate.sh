@@ -3,16 +3,23 @@
 # --- SETTINGS ---
 
 # script to run for inference
-INFER_SCRIPT="v4.py"
+INFER_SCRIPT="v6_wopromptgen.py"
 
 # set GPU to use
-export CUDA_VISIBLE_DEVICES=5
+export CUDA_VISIBLE_DEVICES=4
+
+# verify CUDA is accessible before starting
+if ! python -c "import torch; assert torch.cuda.is_available(), 'No CUDA GPU found'" 2>/dev/null; then
+    echo "ERROR: No CUDA GPU accessible. Check CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES or run on a GPU node."
+    nvidia-smi 2>/dev/null || echo "(nvidia-smi not found)"
+    exit 1
+fi
 
 # directories containing the images
 FACE_DIR="/data2/jiyoon/customgen/ref_imgs/face"
 POSE_DIR="/data2/jiyoon/customgen/ref_imgs/pose"
 STYLE_DIR="/data2/jiyoon/customgen/ref_imgs/style"
-OUTPUT_DIR="/data2/jiyoon/customgen/output"
+OUTPUT_DIR="/data2/jiyoon/customgen/results"
 
 # create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
