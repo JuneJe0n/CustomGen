@@ -3,16 +3,16 @@
 # --- SETTINGS ---
 
 # script to run for inference
-INFER_SCRIPT="b1.py"
+INFER_SCRIPT="v6_faceonlyprompt.py"
 
 # set GPU to use
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=1
 
 # directories containing the images
-FACE_DIR="/data2/CustomGen/CustomGen/data/face/adult"
-POSE_DIR="/data2/CustomGen/CustomGen/data/pose/adult"
-STYLE_DIR="/data2/CustomGen/CustomGen/data/style"
-OUTPUT_DIR="/data2/CustomGen/CustomGen/data"
+FACE_DIR="/data2/jiyoon/customgen/ref_imgs/face"
+POSE_DIR="/data2/jiyoon/customgen/ref_imgs/pose"
+STYLE_DIR="/data2/jiyoon/customgen/ref_imgs/style"
+OUTPUT_DIR="/data2/jiyoon/customgen/gen_imgs/v6_faceonlyprompt"
 
 # create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
