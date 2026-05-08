@@ -75,6 +75,8 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     x1, y1 = max(0, x1), max(0, y1)
     x2, y2 = min(W, x2), min(H, y2)
     pw, ph = x2 - x1, y2 - y1
+    del face_det
+    torch.cuda.empty_cache()
 
 
 
@@ -89,6 +91,8 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     face_hed_crop_pil = hed(face_crop_pil, safe=False, scribble=False)
     face_hed_resized  = face_hed_crop_pil.resize((new_w, new_h), Image.LANCZOS)
     face_hed_np       = np.array(face_hed_resized).astype(np.float32)
+    del hed
+    torch.cuda.empty_cache()
 
     # Resize face crop
     face_crop_pil_resized = face_crop_pil.resize((new_w, new_h), Image.LANCZOS)
@@ -154,7 +158,9 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
     pose_openpose_pil = openpose(integrated_canvas_pil, hand_and_face=True).resize((W, H), Image.LANCZOS)
     pose_openpose_pil.save(output_dir/ "7_pose_kps.png")
-    pose_openpose_np  = np.array(pose_openpose_pil).astype(np.float32) # openpose skeleton img
+    pose_openpose_np  = np.array(pose_openpose_pil).astype(np.float32)
+    del openpose
+    torch.cuda.empty_cache()
 
     # Insert face HED on pose img size empty canvas
     face_hed_canvas_np = np.zeros_like(pose_openpose_np, dtype=np.float32) # empty canvas of size pose

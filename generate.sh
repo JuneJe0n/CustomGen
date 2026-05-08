@@ -7,6 +7,7 @@ INFER_SCRIPT="v6_faceonlyprompt.py"
 
 # set GPU to use
 export CUDA_VISIBLE_DEVICES=1
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # directories containing the images
 FACE_DIR="/data2/jiyoon/customgen/ref_imgs/face"
