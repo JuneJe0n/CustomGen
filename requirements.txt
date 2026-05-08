@@ -1,5 +1,5 @@
-torch==2.5.1+cu121
-torchvision==0.20.1+cu121
+torch==2.5.1+cu124
+torchvision==0.20.1+cu124
 xformers==0.0.29.post1
 
 diffusers==0.35.1
@@ -16,9 +16,9 @@ insightface==0.7.3
 mediapipe==0.10.21
 controlnet_aux==0.0.10
 
-numpy==2.3.2
-scipy==1.16.1
-pandas==2.3.2
+numpy==1.26.4
+scipy==1.15.3
+pandas==2.2.3
 Pillow==11.3.0      
 matplotlib==3.10.6
 
