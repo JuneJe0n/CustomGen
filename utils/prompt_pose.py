@@ -1,5 +1,5 @@
 """
-Prompt generator ablation - face only prompt
+Prompt generator ablation - pose only prompt
 """
 import sys
 import os
@@ -9,20 +9,13 @@ from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 
 MODEL_ID = "Qwen/Qwen2.5-VL-3B-Instruct"
 
-FACE_PROMPT = """
-You are a strict classifier. Classify the person in the picture on two properties :
-1. Gender/Age (required): Classify if the person is [woman/girl/man/boy/baby]
-2. Attribute : Classify if the person has [glasses/sunglasses/beard]. If none, output only the Gender/Age property.
+POSE_PROMPT =  """
+Please analyze the person in the picture. Provide a brief description of the pose of the person. Take carefull consider of the pose of the arms, legs and the overall body.
 
-Output Rules:
-- Format your respose stricly as a single list 
-- Do not add extra words, explanations, or categories.
-
-Examples:
-- [man]
-- [woman]
-- [boy, glasses]
-- [man, beard]
+Format your response strictly as a single list.
+Examples: 
+- [Sitting]
+- [Standing, arms crossed]
 """
 
 # POSE_PROMPT =  """
@@ -35,7 +28,7 @@ Examples:
 # """
 
 
-class FaceOnlyPromptGenerator:
+class PoseOnlyPromptGenerator:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.processor = AutoProcessor.from_pretrained(MODEL_ID)
@@ -99,27 +92,27 @@ class FaceOnlyPromptGenerator:
 
     def generate_prompt(self, face_img_path):
 
-        face_result_raw = self.analyze_image(face_img_path, FACE_PROMPT)
+        # face_result_raw = self.analyze_image(face_img_path, FACE_PROMPT)
         # print(f"👶 Face prompt: {face_result_raw}")
         
-        # pose_result_raw = self.analyze_image(pose_img_path, POSE_PROMPT)
+        pose_result_raw = self.analyze_image(pose_img_path, POSE_PROMPT)
         # print(f"🕺 Pose prompt: {pose_result_raw}")
         
         # Extract clean content
-        face_result = self.extract_content(face_result_raw)
-        # pose_result = self.extract_content(pose_result_raw)
+        # face_result = self.extract_content(face_result_raw)
+        pose_result = self.extract_content(pose_result_raw)
         
         # Combine results with comma
-        prompt_face = f"{face_result}"
-        print(f"✅ Face only prompt: {face_result}")
+        prompt_pose = f"{pose_result}"
+        print(f"✅ Pose only prompt: {pose_result}")
         
-        return prompt_face
+        return prompt_pose
 
 def main():
-    from config import FACE_IMG
-    generator = FaceOnlyPromptGenerator()
-    prompt = generator.generate_prompt(FACE_IMG)
-    print("🎉 Face only prompt generation completed!")
+    from config import POSE_IMG
+    generator = PoseOnlyPromptGenerator()
+    prompt = generator.generate_prompt(POSE_IMG)
+    print("🎉 Pose only prompt generation completed!")
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,5 @@
 """
-Prompt generator ablation - face only prompt
+Prompt generator ablation - basic prompt
 """
 import sys
 import os
@@ -9,33 +9,14 @@ from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 
 MODEL_ID = "Qwen/Qwen2.5-VL-3B-Instruct"
 
-FACE_PROMPT = """
-You are a strict classifier. Classify the person in the picture on two properties :
-1. Gender/Age (required): Classify if the person is [woman/girl/man/boy/baby]
-2. Attribute : Classify if the person has [glasses/sunglasses/beard]. If none, output only the Gender/Age property.
-
-Output Rules:
-- Format your respose stricly as a single list 
-- Do not add extra words, explanations, or categories.
-
-Examples:
-- [man]
-- [woman]
-- [boy, glasses]
-- [man, beard]
+BASIC_PROMPT = """
+You are given two images: the first is a face image, the second is a pose image.
+Describe the person's face from the first image and the person's pose from the second image.
+Format your response strictly as a single list.
 """
 
-# POSE_PROMPT =  """
-# Please analyze the person in the picture. Provide a brief description of the pose of the person. Take carefull consider of the pose of the arms, legs and the overall body.
 
-# Format your response strictly as a single list.
-# Examples: 
-# - [Sitting]
-# - [Standing, arms crossed]
-# """
-
-
-class FaceOnlyPromptGenerator:
+class BasicPromptGenerator:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.processor = AutoProcessor.from_pretrained(MODEL_ID)
@@ -46,14 +27,16 @@ class FaceOnlyPromptGenerator:
         )
         print("Model loaded successfully!")
 
-    def analyze_image(self, image_path, prompt_text):
-        """Analyze image with given prompt"""
-        image = Image.open(image_path).convert("RGB")
-        
+    def analyze_image(self, face_image_path, pose_image_path, prompt_text):
+        """Analyze two images (face + pose) with given prompt"""
+        face_image = Image.open(face_image_path).convert("RGB")
+        pose_image = Image.open(pose_image_path).convert("RGB")
+
         conversation = [
             {
                 "role": "user",
                 "content": [
+                    {"type": "image"},
                     {"type": "image"},
                     {"type": "text", "text": prompt_text},
                 ],
@@ -63,12 +46,12 @@ class FaceOnlyPromptGenerator:
         formatted_prompt = self.processor.apply_chat_template(
             conversation,
             add_generation_prompt=True,
-            tokenize=False,     
+            tokenize=False,
         )
 
         inputs = self.processor(
             text=[formatted_prompt],
-            images=image,
+            images=[face_image, pose_image],
             return_tensors="pt",
             padding=True
         )
@@ -97,29 +80,21 @@ class FaceOnlyPromptGenerator:
             return matches[0].strip()
         return text.strip()
 
-    def generate_prompt(self, face_img_path):
+    def generate_combined_prompt(self, face_img_path, pose_img_path):
 
-        face_result_raw = self.analyze_image(face_img_path, FACE_PROMPT)
-        # print(f"👶 Face prompt: {face_result_raw}")
-        
-        # pose_result_raw = self.analyze_image(pose_img_path, POSE_PROMPT)
-        # print(f"🕺 Pose prompt: {pose_result_raw}")
-        
-        # Extract clean content
-        face_result = self.extract_content(face_result_raw)
-        # pose_result = self.extract_content(pose_result_raw)
-        
-        # Combine results with comma
-        prompt_face = f"{face_result}"
-        print(f"✅ Face only prompt: {face_result}")
-        
-        return prompt_face
+        result_raw = self.analyze_image(face_img_path, pose_img_path, BASIC_PROMPT)
+        print(f"Basic prompt: {result_raw}")
+
+        result = self.extract_content(result_raw)
+        print(f"✅ Basic prompt: {result}")
+
+        return result
 
 def main():
-    from config import FACE_IMG
-    generator = FaceOnlyPromptGenerator()
-    prompt = generator.generate_prompt(FACE_IMG)
-    print("🎉 Face only prompt generation completed!")
+    from config import FACE_IMG, POSE_IMG
+    generator = BasicPromptGenerator()
+    combined_prompt = generator.generate_combined_prompt(FACE_IMG, POSE_IMG)
+    print("🎉 Basic prompt generation completed!")
 
 if __name__ == "__main__":
     main()

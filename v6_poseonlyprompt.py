@@ -1,5 +1,5 @@
 """
-customgen prompt generator ablation - face only prompt
+customgen prompt generator ablation - pose only prompt
 """
 import argparse, cv2, torch, numpy as np
 from pathlib import Path
@@ -36,9 +36,9 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Generate prompt based on input images
-    from utils import FaceOnlyPromptGenerator
-    generator = FaceOnlyPromptGenerator()
-    prompt = generator.generate_prompt(face_img_path)
+    from utils import PoseOnlyPromptGenerator
+    generator = PoseOnlyPromptGenerator()
+    prompt = generator.generate_prompt(pose_img_path)
     del generator
     torch.cuda.empty_cache()
     W, H = pose_im.size
@@ -50,7 +50,7 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     device_id = 0 if 'CUDA_VISIBLE_DEVICES' in os.environ else gpu_idx
     face_det = FaceAnalysis(
         name="antelopev2",
-        root="/data2/jeesoo/js/CustomGen",
+        root="/data2/jeesoo/js/CustomGen/models",
         providers=[('CUDAExecutionProvider', {'device_id': device_id}), 'CPUExecutionProvider']
     )
     face_det.prepare(ctx_id=device_id, det_size=(640, 640))
