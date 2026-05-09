@@ -10,8 +10,8 @@ export CUDA_VISIBLE_DEVICES=1
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # directories containing the images
-FACE_DIR="/data2/jiyoon/customgen/ref_imgs/face"
-POSE_DIR="/data2/jiyoon/customgen/ref_imgs/pose"
+FACE_DIR="/data2/jiyoon/customgen/ref_imgs/face/adult"
+POSE_DIR="/data2/jiyoon/customgen/ref_imgs/pose/adult"
 STYLE_DIR="/data2/jiyoon/customgen/ref_imgs/style"
 OUTPUT_DIR="/data2/jiyoon/customgen/gen_imgs/v6_faceonlyprompt"
 

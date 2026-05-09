@@ -83,8 +83,6 @@ class BasicPromptGenerator:
     def generate_combined_prompt(self, face_img_path, pose_img_path):
 
         result_raw = self.analyze_image(face_img_path, pose_img_path, BASIC_PROMPT)
-        print(f"Basic prompt: {result_raw}")
-
         result = self.extract_content(result_raw)
         print(f"✅ Basic prompt: {result}")
 

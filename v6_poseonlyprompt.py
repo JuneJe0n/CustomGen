@@ -32,8 +32,8 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     # Set output path
     final_output_path = Path(output_path)
     # Create directory for intermediate files
-    output_dir = final_output_path.parent / final_output_path.stem
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # output_dir = final_output_path.parent / final_output_path.stem
+    # output_dir.mkdir(parents=True, exist_ok=True)
     
     # Generate prompt based on input images
     from utils import PoseOnlyPromptGenerator
@@ -50,10 +50,11 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     device_id = 0 if 'CUDA_VISIBLE_DEVICES' in os.environ else gpu_idx
     face_det = FaceAnalysis(
         name="antelopev2",
-        root="/data2/jeesoo/js/CustomGen/models",
+        root="/data2/jeesoo/js/CustomGen",
         providers=[('CUDAExecutionProvider', {'device_id': device_id}), 'CPUExecutionProvider']
     )
     face_det.prepare(ctx_id=device_id, det_size=(640, 640))
+
 
     # Face bbox from face img
     face_cv_full = cv2.cvtColor(np.array(face_im), cv2.COLOR_RGB2BGR)
@@ -75,7 +76,8 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     x1, y1 = max(0, x1), max(0, y1)
     x2, y2 = min(W, x2), min(H, y2)
     pw, ph = x2 - x1, y2 - y1
-
+    del face_det
+    torch.cuda.empty_cache()
 
 
     # --- Resize ---
@@ -89,6 +91,8 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     face_hed_crop_pil = hed(face_crop_pil, safe=False, scribble=False)
     face_hed_resized  = face_hed_crop_pil.resize((new_w, new_h), Image.LANCZOS)
     face_hed_np       = np.array(face_hed_resized).astype(np.float32)
+    del hed
+    torch.cuda.empty_cache()
 
     # Resize face crop
     face_crop_pil_resized = face_crop_pil.resize((new_w, new_h), Image.LANCZOS)
@@ -115,7 +119,7 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     cv2.fillPoly(face_mask_full, [poly_pts_scaled + [start_x, start_y]], 1.0)
     face_mask_full = cv2.GaussianBlur(face_mask_full, (31,31), sigmaX=10, sigmaY=10)
     body_mask = (1.0 - face_mask_full).astype(np.float32)
-    to_mask_image(face_mask_full).save(output_dir/"3_face_mask_full.png")
+    # to_mask_image(face_mask_full).save(output_dir/"3_face_mask_full.png")
 
     # Apply body mask on pose img
     pose_np = np.array(pose_im).astype(np.float32)
@@ -145,7 +149,7 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     integrated_canvas_np[start_y_clip:end_y_clip, start_x_clip:end_x_clip] += face_crop_np_masked[face_start_y:face_end_y, face_start_x:face_end_x]
     integrated_canvas_pil = Image.fromarray(integrated_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
 
-    integrated_canvas_pil.save(output_dir/ "5_integrated_canvas.png")
+    # integrated_canvas_pil.save(output_dir/ "5_integrated_canvas.png")
     
 
 
@@ -153,14 +157,16 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     # Openpose
     openpose = OpenposeDetector.from_pretrained("lllyasviel/Annotators").to(DEVICE)
     pose_openpose_pil = openpose(integrated_canvas_pil, hand_and_face=True).resize((W, H), Image.LANCZOS)
-    pose_openpose_pil.save(output_dir/ "7_pose_kps.png")
+    # pose_openpose_pil.save(output_dir/ "7_pose_kps.png")
     pose_openpose_np  = np.array(pose_openpose_pil).astype(np.float32) # openpose skeleton img
+    del openpose
+    torch.cuda.empty_cache()
 
     # Insert face HED on pose img size empty canvas
     face_hed_canvas_np = np.zeros_like(pose_openpose_np, dtype=np.float32) # empty canvas of size pose
     face_hed_canvas_np[start_y:start_y+new_h, start_x:start_x+new_w] = face_hed_np_masked
     face_hed_canvas_pil = Image.fromarray(face_hed_canvas_np.clip(0,255).astype(np.uint8)).convert("RGB")
-    face_hed_canvas_pil.save(output_dir/ "6_hed_aligned.png")
+    # face_hed_canvas_pil.save(output_dir/ "6_hed_aligned.png")
     
     
     # --- Infer ---
@@ -188,7 +194,7 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
 
 
     gen_args = dict(
-        #prompt=prompt,
+        prompt=prompt,
         negative_prompt=NEG,
         num_inference_steps=STEPS,
         guidance_scale=CFG,
@@ -215,7 +221,7 @@ def main(face_img_path: str, pose_img_path: str, style_img_path: str, output_pat
     # Clear GPU memory
     del pipe
     torch.cuda.empty_cache()
-    out.save(output_dir/"8_final_result.png")
+    # out.save(output_dir/"8_final_result.png")
     # Also save to the final output path
     out.save(final_output_path)
     print(f"✅ Saved final result to {final_output_path}")

@@ -90,11 +90,11 @@ class PoseOnlyPromptGenerator:
             return matches[0].strip()
         return text.strip()
 
-    def generate_prompt(self, face_img_path):
+    def generate_prompt(self, pose_img_path):
 
         # face_result_raw = self.analyze_image(face_img_path, FACE_PROMPT)
         # print(f"👶 Face prompt: {face_result_raw}")
-        
+
         pose_result_raw = self.analyze_image(pose_img_path, POSE_PROMPT)
         # print(f"🕺 Pose prompt: {pose_result_raw}")
         
