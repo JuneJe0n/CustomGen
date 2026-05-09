@@ -11,8 +11,8 @@ MODEL_ID = "Qwen/Qwen2.5-VL-3B-Instruct"
 
 BASIC_PROMPT = """
 You are given two images: the first is a face image, the second is a pose image.
-Describe the person's face from the first image and the person's pose from the second image.
-Format your response strictly as a single list.
+Describe the person's appearance combining facial features from the first image and body pose from the second image.
+Write a single, cohesive sentence describing the person without referencing which image the details came from.
 """
 
 
